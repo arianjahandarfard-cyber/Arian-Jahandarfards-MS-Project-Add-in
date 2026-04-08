@@ -13,7 +13,7 @@ namespace ArianJahandarfardsAddIn
     public static class AJUpdater
     {
         // Point this at your version.json hosted on GitHub Pages or wherever
-        private const string VERSION_CHECK_URL = "private const string VERSION_CHECK_URL = \"https://arianjahanfard-cyber.github.io/version.json/version.json\";";
+        private const string VERSION_CHECK_URL = "https://arianjahandarfard-cyber.github.io/version.json/version.json";
 
         private static readonly HttpClient _http = new HttpClient();
 
@@ -21,6 +21,8 @@ namespace ArianJahandarfardsAddIn
         {
             try
             {
+                System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+
                 string json = await _http.GetStringAsync(VERSION_CHECK_URL);
                 var remote = JsonConvert.DeserializeObject<VersionManifest>(json);
 

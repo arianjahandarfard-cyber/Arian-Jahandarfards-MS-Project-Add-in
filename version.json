@@ -1,0 +1,5 @@
+{
+  "version": "1.2.0",
+  "downloadUrl": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v1.2.0/AJAddIn-v1.2.0.zip",
+  "releaseNotes": "Fixed milestone delta bug, improved GoToUID performance."
+}

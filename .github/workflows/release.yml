@@ -23,8 +23,8 @@ jobs:
         run: nuget restore "Arian Jahandarfards MS Project Add-in.slnx"
 
       - name: Build Release
-        run: msbuild "Arian Jahandarfards MS Project Add-in.slnx" /p:Configuration=Release /p:Platform="Any CPU"
-
+        run: msbuild "Arian Jahandarfards MS Project Add-in.slnx" /p:Configuration=Release /p:Platform="Any CPU" /p:SignManifests=false
+        
       - name: Zip output
         shell: pwsh
         run: Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-${{ github.ref_name }}.zip"

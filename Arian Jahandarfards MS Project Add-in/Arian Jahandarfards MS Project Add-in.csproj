@@ -185,7 +185,7 @@
     </Resource>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="RELEASE_NOTES.txt" />
+    <None Include="RELEASE_NOTES.txt" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

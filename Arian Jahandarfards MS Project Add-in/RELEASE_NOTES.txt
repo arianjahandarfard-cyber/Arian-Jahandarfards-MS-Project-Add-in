@@ -1,0 +1,33 @@
+﻿
+1. Make code changes in Visual Studio
+
+2. Update AssemblyInfo.cs version number (e.g. 2.2.2.17)
+
+3. Build in Release mode (Ctrl+Shift+B) — confirm 0 errors
+
+4. Git Changes panel — stage all, commit message, Commit All, Push
+
+5. Terminal — tag and push:
+      git tag v2.2.2.17
+      git push origin v2.2.2.17
+
+6. Update version.json in the public GitHub repo:
+      - version: "2.2.2.17"
+      - downloadUrl: update to new version number
+      - releaseNotes: describe what changed
+
+## GitHub Actions builds and publishes the zip automatically after step 5.
+## No manual zip or upload needed.
+
+## Secrets (stored in GitHub repo Settings → Secrets):
+      CERTIFICATE_BASE64 — the signing cert
+      CERTIFICATE_PASSWORD — AJTools2026!
+
+## version.json is hosted at:
+      https://arianjahandarfard-cyber.github.io/version.json/version.json
+
+## Private repo (code):
+      https://github.com/arianjahandarfard-cyber/Arian-Jahandarfards-MS-Project-Add-in
+
+## Public repo (version.json):
+      https://github.com/arianjahandarfard-cyber/version.json

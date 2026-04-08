@@ -25,7 +25,7 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AJRibbon));
             this.tab1 = this.Factory.CreateRibbonTab();
-            this.group3 = this.Factory.CreateRibbonGroup();
+            this.Update = this.Factory.CreateRibbonGroup();
             this.group1 = this.Factory.CreateRibbonGroup();
             this.group2 = this.Factory.CreateRibbonGroup();
             this.btnCheckUpdates = this.Factory.CreateRibbonButton();
@@ -37,7 +37,7 @@
             this.btnSettings = this.Factory.CreateRibbonButton();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
             this.tab1.SuspendLayout();
-            this.group3.SuspendLayout();
+            this.Update.SuspendLayout();
             this.group1.SuspendLayout();
             this.group2.SuspendLayout();
             this.SuspendLayout();
@@ -45,17 +45,17 @@
             // tab1
             // 
             this.tab1.ControlId.ControlIdType = Microsoft.Office.Tools.Ribbon.RibbonControlIdType.Office;
-            this.tab1.Groups.Add(this.group3);
+            this.tab1.Groups.Add(this.Update);
             this.tab1.Groups.Add(this.group1);
             this.tab1.Groups.Add(this.group2);
             this.tab1.Label = "Arian Jahandarfard\'s Tools";
             this.tab1.Name = "tab1";
             // 
-            // group3
+            // Update
             // 
-            this.group3.Items.Add(this.btnCheckUpdates);
-            this.group3.Label = "group3";
-            this.group3.Name = "group3";
+            this.Update.Items.Add(this.btnCheckUpdates);
+            this.Update.Label = "Update";
+            this.Update.Name = "Update";
             // 
             // group1
             // 
@@ -152,8 +152,8 @@
             this.Load += new Microsoft.Office.Tools.Ribbon.RibbonUIEventHandler(this.AJRibbon_Load);
             this.tab1.ResumeLayout(false);
             this.tab1.PerformLayout();
-            this.group3.ResumeLayout(false);
-            this.group3.PerformLayout();
+            this.Update.ResumeLayout(false);
+            this.Update.PerformLayout();
             this.group1.ResumeLayout(false);
             this.group1.PerformLayout();
             this.group2.ResumeLayout(false);
@@ -174,7 +174,7 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnSettings;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group2;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnGoToUID;
-        internal Microsoft.Office.Tools.Ribbon.RibbonGroup group3;
+        internal Microsoft.Office.Tools.Ribbon.RibbonGroup Update;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnCheckUpdates;
     }
 

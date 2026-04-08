@@ -189,14 +189,13 @@
 		<VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
 	</PropertyGroup>
 	<PropertyGroup>
-		<SignManifests>false</SignManifests>
-		<GenerateManifests>false</GenerateManifests>
+		<SignManifests>true</SignManifests>
 	</PropertyGroup>
 	<PropertyGroup>
 		<ManifestKeyFile>Arian Jahandarfards MS Project Add-in_TemporaryKey.pfx</ManifestKeyFile>
 	</PropertyGroup>
 	<PropertyGroup>
-		<ManifestCertificateThumbprint>D4797C8B94907463F6E2551900599F966C75E3D6</ManifestCertificateThumbprint>
+		<ManifestCertificateThumbprint>E8AA3510D8F56CAB2F58A9492A0C18A831A0AA7A</ManifestCertificateThumbprint>
 	</PropertyGroup>
 	<Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 	<Import Project="$(VSToolsPath)\OfficeTools\Microsoft.VisualStudio.Tools.Office.targets" Condition="'$(VSToolsPath)' != ''" />

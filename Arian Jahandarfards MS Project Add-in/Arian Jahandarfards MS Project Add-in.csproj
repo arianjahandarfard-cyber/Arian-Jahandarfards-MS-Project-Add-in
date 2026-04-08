@@ -190,6 +190,7 @@
 	</PropertyGroup>
 	<PropertyGroup>
 		<SignManifests>false</SignManifests>
+		<GenerateManifests>false</GenerateManifests>
 	</PropertyGroup>
 	<PropertyGroup>
 		<ManifestKeyFile>Arian Jahandarfards MS Project Add-in_TemporaryKey.pfx</ManifestKeyFile>

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -12,10 +11,19 @@ namespace ArianJahandarfardsAddIn
 {
     public static class AJUpdater
     {
-        // Point this at your version.json hosted on GitHub Pages or wherever
         private const string VERSION_CHECK_URL = "https://arianjahandarfard-cyber.github.io/version.json/version.json";
+        private const string GITHUB_TOKEN = "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";
 
         private static readonly HttpClient _http = new HttpClient();
+        private static readonly HttpClient _downloadHttp = CreateDownloadClient();
+
+        private static HttpClient CreateDownloadClient()
+        {
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("Authorization", $"token {GITHUB_TOKEN}");
+            client.DefaultRequestHeaders.Add("Accept", "application/octet-stream");
+            return client;
+        }
 
         public static async Task CheckForUpdatesAsync(bool silent = false)
         {
@@ -79,21 +87,15 @@ namespace ArianJahandarfardsAddIn
 
             try
             {
-                // Show a simple progress message
                 MessageBox.Show(
                     "Downloading update... MS Project will close and reopen automatically.\n\nClick OK to begin.",
                     "AJ Tools — Downloading",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-                // Download the zip
-                byte[] data = await _http.GetByteArrayAsync(remote.DownloadUrl);
+                byte[] data = await _downloadHttp.GetByteArrayAsync(remote.DownloadUrl);
                 File.WriteAllBytes(tempZip, data);
 
-                // Write a batch script that:
-                // 1. Waits for MSProject to close
-                // 2. Extracts the zip over the install dir
-                // 3. Relaunches MSProject
                 string batchContent = $@"
 @echo off
 echo Waiting for MS Project to close...
@@ -112,7 +114,6 @@ del ""%~f0""
 ";
                 File.WriteAllText(updaterScript, batchContent);
 
-                // Launch the batch script, then close MSProject
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = updaterScript,
@@ -120,7 +121,6 @@ del ""%~f0""
                     CreateNoWindow = false
                 });
 
-                // Close MS Project — the batch script will relaunch it
                 Globals.ThisAddIn.Application.Quit();
             }
             catch (Exception ex)

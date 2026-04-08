@@ -22,9 +22,17 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore "Arian Jahandarfards MS Project Add-in.slnx"
 
+      - name: Import Certificate
+        shell: pwsh
+        run: |
+          $certBytes = [Convert]::FromBase64String("${{ secrets.CERTIFICATE_BASE64 }}")
+          $certPath = "$env:RUNNER_TEMP\AJCert.pfx"
+          [IO.File]::WriteAllBytes($certPath, $certBytes)
+          Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String "${{ secrets.CERTIFICATE_PASSWORD }}" -AsPlainText -Force)
+
       - name: Build Release
-        run: msbuild "Arian Jahandarfards MS Project Add-in.slnx" /p:Configuration=Release /p:Platform="Any CPU" /p:SignManifests=false
-        
+        run: msbuild "Arian Jahandarfards MS Project Add-in.slnx" /p:Configuration=Release /p:Platform="Any CPU"
+
       - name: Zip output
         shell: pwsh
         run: Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-${{ github.ref_name }}.zip"

@@ -1,4 +1,4 @@
-name: Build, Zip, and Deploy to Azuree
+name: Build, Zip, and Deploy to Azure
 
 on:
   push:
@@ -58,6 +58,18 @@ jobs:
           $version = "${{ steps.get_version.outputs.VERSION }}"
           Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-v$version.zip"
 
+      - name: Install WiX
+        shell: pwsh
+        run: dotnet tool install --global wix --version 4.0.5
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          cd AJToolsInstaller
+          (Get-Content Package.wxs) -replace 'Version="[^"]*"', "Version=`"$version`"" | Set-Content Package.wxs
+          wix build Package.wxs -o ..\AJAddIn.msi
+
       - name: Upload zip to Azure Blob
         shell: pwsh
         run: |
@@ -67,14 +79,25 @@ jobs:
           $ctx = New-AzStorageContext -ConnectionString $connStr
           Set-AzStorageBlobContent -File $zipName -Container "releases" -Blob $zipName -Context $ctx -Force
 
+      - name: Upload MSI to Azure Blob
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $msiName = "AJAddIn-v$version.msi"
+          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+          $ctx = New-AzStorageContext -ConnectionString $connStr
+          Set-AzStorageBlobContent -File "AJAddIn.msi" -Container "releases" -Blob $msiName -Context $ctx -Force
+
       - name: Update version.json on GitHub Pages
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
           $zipName = "AJAddIn-v$version.zip"
+          $msiName = "AJAddIn-v$version.msi"
           $json = @{
             version = $version
             downloadUrl = "https://ajtools.blob.core.windows.net/releases/$zipName"
+            msiUrl = "https://ajtools.blob.core.windows.net/releases/$msiName"
             releaseNotes = "Version $version"
           } | ConvertTo-Json
           git config --global user.name "github-actions"

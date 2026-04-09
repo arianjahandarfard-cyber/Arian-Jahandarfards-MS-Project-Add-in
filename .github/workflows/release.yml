@@ -63,6 +63,12 @@ jobs:
           $releaseDir = "$env:GITHUB_WORKSPACE\Arian Jahandarfards MS Project Add-in\bin\Release"
           wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$env:GITHUB_WORKSPACE"
 
+      - name: Include AJSetup in release zip
+        shell: pwsh
+        run: |
+          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "Arian Jahandarfards MS Project Add-in\bin\Release\AJSetup.exe"
+          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "Arian Jahandarfards MS Project Add-in\bin\Release\AJ Logo Final Files-02.png"
+
       - name: Bundle installer package
         shell: pwsh
         run: |

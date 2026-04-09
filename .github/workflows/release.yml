@@ -65,7 +65,7 @@ jobs:
           Write-Host "Files in Release dir:"
           Get-ChildItem $releaseDir | Select-Object Name
 
-   - name: Build MSI
+      - name: Build MSI
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"

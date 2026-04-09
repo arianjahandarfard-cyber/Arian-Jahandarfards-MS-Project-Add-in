@@ -66,8 +66,11 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
-          $srcDir = "$env:GITHUB_WORKSPACE"
-          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$srcDir"
+          $releaseDir = "$env:GITHUB_WORKSPACE\Arian Jahandarfards MS Project Add-in\bin\Release"
+          $wxs = Get-Content "AJToolsInstaller\Package.wxs" -Raw
+          $wxs = $wxs -replace '\$\(var\.SourceDir\)\\Arian Jahandarfards MS Project Add-in\\bin\\Release', $releaseDir
+          $wxs | Set-Content "AJToolsInstaller\Package.wxs" -Encoding UTF8
+          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version"
 
       - name: Upload zip to Azure Blob
         shell: pwsh

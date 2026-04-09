@@ -33,7 +33,7 @@ namespace ArianJahandarfardsAddIn
                         MessageBoxIcon.Information);
 
                     if (result == DialogResult.Yes)
-                        await DownloadAndInstallAsync(remote);
+                        DownloadAndInstall(remote);
                 }
                 else
                 {
@@ -48,7 +48,7 @@ namespace ArianJahandarfardsAddIn
             }
         }
 
-        private static async Task DownloadAndInstallAsync(VersionManifest remote)
+        private static void DownloadAndInstall(VersionManifest remote)
         {
             string tempZip = Path.Combine(Path.GetTempPath(), $"AJAddIn-{remote.Version}.zip");
             string installDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
@@ -62,7 +62,8 @@ namespace ArianJahandarfardsAddIn
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-                byte[] data = await _http.GetByteArrayAsync(remote.DownloadUrl);
+                // Synchronous download — no async, no thread abort
+                byte[] data = _http.GetByteArrayAsync(remote.DownloadUrl).GetAwaiter().GetResult();
                 File.WriteAllBytes(tempZip, data);
 
                 string batchContent = $@"@echo off

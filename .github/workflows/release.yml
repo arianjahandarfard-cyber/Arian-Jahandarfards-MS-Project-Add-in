@@ -66,11 +66,6 @@ jobs:
           $wxs | Set-Content "AJToolsInstaller\Package.wxs" -Encoding UTF8
           wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version"
 
-      - name: Build AJSetup EXE
-        shell: pwsh
-        run: |
-          msbuild "AJSetup\AJSetup.csproj" /p:Configuration=Release /p:Platform="Any CPU"
-
       - name: Bundle installer package
         shell: pwsh
         run: |

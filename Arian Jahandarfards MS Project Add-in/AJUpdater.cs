@@ -79,7 +79,8 @@ namespace ArianJahandarfardsAddIn
                 // Fallback — download installer bundle zip and extract
                 string bundlePath = Path.Combine(tempDir, "bundle.zip");
                 await DownloadFile(remote.InstallerUrl, bundlePath);
-                System.IO.Compression.ZipFile.ExtractToDirectory(bundlePath, tempDir, true);
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+                System.IO.Compression.ZipFile.ExtractToDirectory(bundlePath, tempDir);
 
                 string vstoPath = GetVstoInstallerPath();
                 string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";

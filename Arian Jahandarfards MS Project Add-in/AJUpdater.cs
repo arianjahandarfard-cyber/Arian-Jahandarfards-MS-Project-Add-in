@@ -88,7 +88,7 @@ namespace ArianJahandarfardsAddIn
 
                 string bat = $@"@echo off
 timeout /t 2 /nobreak >nul
-msiexec /i ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
+msiexec /fora ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
 :waitloop
 timeout /t 3 /nobreak >nul
 if not exist ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto"" goto waitloop

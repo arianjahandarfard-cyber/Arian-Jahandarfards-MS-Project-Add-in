@@ -1,71 +1,109 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="AJ Tools"
-           Manufacturer="Arian Jahandarfard"
-           Version="!(bind.property.Version)"
-           UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
-           Scope="perMachine">
+name: Build, Zip, and Deploy to Azure
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+on:
+  push:
+    branches:
+      - master
 
-    <Feature Id="MainFeature" Title="AJ Tools">
-      <ComponentGroupRef Id="AJFilesGroup" />
-      <ComponentGroupRef Id="AJRegistryGroup" />
-    </Feature>
+permissions:
+  contents: write
 
-  </Package>
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  <Fragment>
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
-        <Directory Id="INSTALLFOLDER" Name="AJTools" />
-      </Directory>
-    </Directory>
-  </Fragment>
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-  <Fragment>
-    <ComponentGroup Id="AJFilesGroup" Directory="INSTALLFOLDER">
-      <Component Id="AJDllComp" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
-        <File Id="AJDll"
-              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\Arian Jahandarfards MS Project Add-in.dll"
-              KeyPath="yes" />
-      </Component>
-      <Component Id="AJManifestComp" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
-        <File Id="AJManifest"
-              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\Arian Jahandarfards MS Project Add-in.dll.manifest"
-              KeyPath="yes" />
-      </Component>
-      <Component Id="AJVstoComp" Guid="E5F6A7B8-C9D0-1234-EF01-456789012345">
-        <File Id="AJVsto"
-              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\Arian Jahandarfards MS Project Add-in.vsto"
-              KeyPath="yes" />
-      </Component>
-      <Component Id="MSOfficeToolsComp" Guid="F6A7B8C9-D0E1-2345-F012-567890123456">
-        <File Id="MSOfficeTools"
-              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\Microsoft.Office.Tools.Common.v4.0.Utilities.dll"
-              KeyPath="yes" />
-      </Component>
-      <Component Id="NewtonsoftComp" Guid="A7B8C9D0-E1F2-3456-0123-678901234567">
-        <File Id="NewtonsoftDll"
-              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\Newtonsoft.Json.dll"
-              KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
-  </Fragment>
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
 
-  <Fragment>
-    <ComponentGroup Id="AJRegistryGroup" Directory="INSTALLFOLDER">
-      <Component Id="AJRegComp" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">
-        <RegistryKey Root="HKLM"
-                     Key="SOFTWARE\Microsoft\Office\MS Project\Addins\ArianJahandarfardsAddIn">
-          <RegistryValue Name="Description"  Value="AJ Tools"        Type="string"  />
-          <RegistryValue Name="FriendlyName" Value="AJ Tools"        Type="string"  />
-          <RegistryValue Name="LoadBehavior" Value="3"               Type="integer" />
-          <RegistryValue Name="Manifest"
-                         Value="C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto|vstolocal"
-                         Type="string" />
-        </RegistryKey>
-      </Component>
-    </ComponentGroup>
-  </Fragment>
-</Wix>
+      - name: Restore NuGet packages
+        run: nuget restore "Arian Jahandarfards MS Project Add-in.slnx"
+
+      - name: Install Azure PowerShell
+        shell: pwsh
+        run: Install-Module -Name Az.Storage -Force -AllowClobber -Scope CurrentUser
+
+      - name: Import Certificate
+        shell: pwsh
+        run: |
+          $certBytes = [Convert]::FromBase64String("${{ secrets.CERTIFICATE_BASE64 }}")
+          $certPath = "$env:RUNNER_TEMP\AJCert.pfx"
+          [IO.File]::WriteAllBytes($certPath, $certBytes)
+          Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String "${{ secrets.CERTIFICATE_PASSWORD }}" -AsPlainText -Force)
+
+      - name: Build Release
+        run: msbuild "Arian Jahandarfards MS Project Add-in.slnx" /p:Configuration=Release /p:Platform="Any CPU"
+
+      - name: Get version from AssemblyInfo
+        id: get_version
+        shell: pwsh
+        run: |
+          $content = Get-Content "Arian Jahandarfards MS Project Add-in/Properties/AssemblyInfo.cs" -Raw
+          if ($content -match '\[assembly: AssemblyVersion\("(\d+\.\d+\.\d+\.\d+)"\)\]') {
+            $version = $Matches[1]
+          } else {
+            Write-Error "Could not find AssemblyVersion"
+            exit 1
+          }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Zip output
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-v$version.zip"
+
+      - name: Install WiX
+        shell: pwsh
+        run: dotnet tool install --global wix --version 4.0.5
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $srcDir = "$env:GITHUB_WORKSPACE"
+          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$srcDir"
+
+      - name: Upload zip to Azure Blob
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $zipName = "AJAddIn-v$version.zip"
+          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+          $ctx = New-AzStorageContext -ConnectionString $connStr
+          Set-AzStorageBlobContent -File $zipName -Container "releases" -Blob $zipName -Context $ctx -Force
+
+      - name: Upload MSI to Azure Blob
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $msiName = "AJAddIn-v$version.msi"
+          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+          $ctx = New-AzStorageContext -ConnectionString $connStr
+          Set-AzStorageBlobContent -File "AJAddIn.msi" -Container "releases" -Blob $msiName -Context $ctx -Force
+
+      - name: Update version.json on GitHub Pages
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $zipName = "AJAddIn-v$version.zip"
+          $msiName = "AJAddIn-v$version.msi"
+          $json = @{
+            version = $version
+            downloadUrl = "https://ajtools.blob.core.windows.net/releases/$zipName"
+            msiUrl = "https://ajtools.blob.core.windows.net/releases/$msiName"
+            releaseNotes = "Version $version"
+          } | ConvertTo-Json
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/arianjahandarfard-cyber/version.json.git versionrepo
+          $json | Set-Content "versionrepo/version.json"
+          Set-Location versionrepo
+          git add version.json
+          git commit -m "Auto-update to v$version"
+          git push

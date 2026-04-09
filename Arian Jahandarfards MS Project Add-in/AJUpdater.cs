@@ -76,21 +76,23 @@ namespace ArianJahandarfardsAddIn
                 await DownloadFile(remote.CabUrl, cabPath);
                 await DownloadFile(remote.InstallerUrl.Replace(".zip", "").Replace("AJToolsInstaller-v", "AJSetup-v"), exePath);
 
-                // Fallback — download installer bundle zip and extract
+                // Fallback — download installer bundle zip and extract to subfolder
                 string bundlePath = Path.Combine(tempDir, "bundle.zip");
                 await DownloadFile(remote.InstallerUrl, bundlePath);
-                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
-                System.IO.Compression.ZipFile.ExtractToDirectory(bundlePath, tempDir);
+                string extractDir = Path.Combine(tempDir, "bundle");
+                if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
+                System.IO.Compression.ZipFile.ExtractToDirectory(bundlePath, extractDir);
 
                 string vstoPath = GetVstoInstallerPath();
                 string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
 
-                // Write batch that installs MSI + VSTO then relaunches MS Project
                 string bat = $@"@echo off
 timeout /t 2 /nobreak >nul
-msiexec /i ""{msiPath}"" /quiet /norestart
-timeout /t 5 /nobreak >nul
-""{vstoPath}"" /i ""{vstoTarget}""
+msiexec /i ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
+:waitloop
+timeout /t 3 /nobreak >nul
+if not exist ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto"" goto waitloop
+""{vstoPath}"" /i ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto""
 start """" ""WINPROJ.EXE""
 ";
                 File.WriteAllText(batPath, bat);

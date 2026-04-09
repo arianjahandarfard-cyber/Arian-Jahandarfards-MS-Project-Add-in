@@ -66,9 +66,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
-          cd AJToolsInstaller
-          (Get-Content Package.wxs) -replace 'Version="[^"]*"', "Version=`"$version`"" | Set-Content Package.wxs
-          wix build Package.wxs -o ..\AJAddIn.msi
+          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version"
 
       - name: Upload zip to Azure Blob
         shell: pwsh

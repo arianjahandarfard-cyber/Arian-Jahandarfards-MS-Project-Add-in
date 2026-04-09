@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /AJToolsInstaller/AJAddIn.msi
 /AJToolsInstaller/AJAddIn.wixpdb
+AJToolsInstaller/cab1.cab

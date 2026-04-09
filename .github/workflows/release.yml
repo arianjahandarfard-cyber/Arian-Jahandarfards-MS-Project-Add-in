@@ -52,12 +52,6 @@ jobs:
           }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Zip output
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-v$version.zip"
-
       - name: Install WiX
         shell: pwsh
         run: dotnet tool install --global wix --version 4.0.5
@@ -71,6 +65,28 @@ jobs:
           $wxs = $wxs -replace '\$\(var\.SourceDir\)\\Arian Jahandarfards MS Project Add-in\\bin\\Release', $releaseDir
           $wxs | Set-Content "AJToolsInstaller\Package.wxs" -Encoding UTF8
           wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version"
+
+      - name: Build AJSetup EXE
+        shell: pwsh
+        run: |
+          msbuild "AJSetup\AJSetup.csproj" /p:Configuration=Release /p:Platform="Any CPU"
+
+      - name: Bundle installer package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          New-Item -ItemType Directory -Force -Path "AJToolsInstaller-v$version"
+          Copy-Item "AJAddIn.msi" "AJToolsInstaller-v$version\"
+          Copy-Item "AJToolsInstaller\cab1.cab" "AJToolsInstaller-v$version\"
+          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "AJToolsInstaller-v$version\"
+          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "AJToolsInstaller-v$version\"
+          Compress-Archive -Path "AJToolsInstaller-v$version\*" -DestinationPath "AJToolsInstaller-v$version.zip"
+
+      - name: Zip output
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-v$version.zip"
 
       - name: Upload zip to Azure Blob
         shell: pwsh
@@ -90,16 +106,35 @@ jobs:
           $ctx = New-AzStorageContext -ConnectionString $connStr
           Set-AzStorageBlobContent -File "AJAddIn.msi" -Container "releases" -Blob $msiName -Context $ctx -Force
 
+      - name: Upload cab to Azure Blob
+        shell: pwsh
+        run: |
+          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+          $ctx = New-AzStorageContext -ConnectionString $connStr
+          Set-AzStorageBlobContent -File "AJToolsInstaller\cab1.cab" -Container "releases" -Blob "cab1.cab" -Context $ctx -Force
+
+      - name: Upload installer bundle to Azure Blob
+        shell: pwsh
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          $bundleName = "AJToolsInstaller-v$version.zip"
+          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+          $ctx = New-AzStorageContext -ConnectionString $connStr
+          Set-AzStorageBlobContent -File $bundleName -Container "releases" -Blob $bundleName -Context $ctx -Force
+
       - name: Update version.json on GitHub Pages
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
           $zipName = "AJAddIn-v$version.zip"
           $msiName = "AJAddIn-v$version.msi"
+          $bundleName = "AJToolsInstaller-v$version.zip"
           $json = @{
             version = $version
             downloadUrl = "https://ajtools.blob.core.windows.net/releases/$zipName"
             msiUrl = "https://ajtools.blob.core.windows.net/releases/$msiName"
+            cabUrl = "https://ajtools.blob.core.windows.net/releases/cab1.cab"
+            installerUrl = "https://ajtools.blob.core.windows.net/releases/$bundleName"
             releaseNotes = "Version $version"
           } | ConvertTo-Json
           git config --global user.name "github-actions"

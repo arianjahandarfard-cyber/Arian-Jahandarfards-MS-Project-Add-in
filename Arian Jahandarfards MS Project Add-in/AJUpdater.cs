@@ -51,8 +51,10 @@ namespace ArianJahandarfardsAddIn
         private static void DownloadAndInstall(VersionManifest remote)
         {
             string tempZip = Path.Combine(Path.GetTempPath(), $"AJAddIn-{remote.Version}.zip");
+            string tempExtract = Path.Combine(Path.GetTempPath(), "AJAddInUpdate");
             string installDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             string updaterScript = Path.Combine(Path.GetTempPath(), "AJUpdater.bat");
+            string logFile = Path.Combine(Path.GetTempPath(), "AJUpdater.log");
 
             try
             {
@@ -62,20 +64,25 @@ namespace ArianJahandarfardsAddIn
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-                // Synchronous download — no async, no thread abort
                 byte[] data = _http.GetByteArrayAsync(remote.DownloadUrl).GetAwaiter().GetResult();
                 File.WriteAllBytes(tempZip, data);
 
-                string tempExtract = Path.Combine(Path.GetTempPath(), "AJAddInUpdate");
                 string batchContent = $@"@echo off
+echo [%time%] Starting update >> ""{logFile}""
 echo Closing MS Project...
+echo [%time%] Killing WINPROJ.EXE >> ""{logFile}""
 taskkill /f /im WINPROJ.EXE >nul 2>&1
 timeout /t 3 /nobreak >nul
-echo Extracting update...
+echo [%time%] Extracting zip >> ""{logFile}""
 if exist ""{tempExtract}"" rmdir /s /q ""{tempExtract}""
 powershell -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{tempExtract}' -Force""
-echo Copying files...
+echo [%time%] Listing extracted files >> ""{logFile}""
+dir ""{tempExtract}"" >> ""{logFile}"" 2>&1
+echo [%time%] Copying to install dir: {installDir} >> ""{logFile}""
 xcopy /e /y /i ""{tempExtract}\*"" ""{installDir}""
+echo [%time%] xcopy exit code: %errorlevel% >> ""{logFile}""
+echo [%time%] Listing install dir after copy >> ""{logFile}""
+dir ""{installDir}"" >> ""{logFile}"" 2>&1
 echo Done! Relaunching MS Project...
 start """" ""WINPROJ.EXE""
 rmdir /s /q ""{tempExtract}""

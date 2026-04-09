@@ -61,10 +61,7 @@ jobs:
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
           $releaseDir = "$env:GITHUB_WORKSPACE\Arian Jahandarfards MS Project Add-in\bin\Release"
-          $wxs = Get-Content "AJToolsInstaller\Package.wxs" -Raw
-          $wxs = $wxs -replace '\$\(var\.SourceDir\)\\Arian Jahandarfards MS Project Add-in\\bin\\Release', $releaseDir
-          $wxs | Set-Content "AJToolsInstaller\Package.wxs" -Encoding UTF8
-          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version"
+          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$env:GITHUB_WORKSPACE"
 
       - name: Bundle installer package
         shell: pwsh

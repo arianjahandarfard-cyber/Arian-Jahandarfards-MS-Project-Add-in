@@ -55,37 +55,38 @@ namespace ArianJahandarfardsAddIn
         {
             try
             {
-                // Download new MSI to temp folder
+                // Download MSI to temp folder
                 string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
                 Directory.CreateDirectory(tempDir);
                 string msiPath = Path.Combine(tempDir, "AJAddIn.msi");
 
+                // Show downloading message
                 MessageBox.Show(
-                    "Downloading update... MS Project will close and relaunch automatically after install.",
-                    "AJ Tools — Downloading Update",
+                    "Downloading update. The installer will open automatically when ready.\n\nPlease close Microsoft Project when prompted.",
+                    "AJ Tools — Downloading",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
                 byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
                 File.WriteAllBytes(msiPath, msiBytes);
 
-                // Find AJSetup.exe — it lives next to the DLL
+                // Find AJSetup.exe next to the installed DLL
                 string addInDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 string setupExe = Path.Combine(addInDir, "AJSetup.exe");
 
                 if (!File.Exists(setupExe))
-                    throw new Exception($"AJSetup.exe not found at:\n{setupExe}");
+                    throw new Exception($"AJSetup.exe not found at:\n{setupExe}\n\nPlease reinstall AJ Tools.");
 
-                // Launch AJSetup.exe in silent update mode
+                // Launch AJSetup in update mode — it handles everything
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = setupExe,
-                    Arguments = $"/update \"{msiPath}\"",
+                    Arguments = $"/update \"{msiPath}\" /version \"{remote.Version}\"",
                     UseShellExecute = true,
                     Verb = "runas"
                 });
 
-                // Quit MS Project — AJSetup handles everything from here
+                // Quit MS Project so the MSI can replace the DLL
                 Globals.ThisAddIn.Application.Quit();
             }
             catch (Exception ex)

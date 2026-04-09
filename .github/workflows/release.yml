@@ -97,13 +97,6 @@ jobs:
           $ctx = New-AzStorageContext -ConnectionString $connStr
           Set-AzStorageBlobContent -File "AJAddIn.msi" -Container "releases" -Blob $msiName -Context $ctx -Force
 
-      - name: Upload cab to Azure Blob
-        shell: pwsh
-        run: |
-          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
-          $ctx = New-AzStorageContext -ConnectionString $connStr
-          Set-AzStorageBlobContent -File "AJToolsInstaller\cab1.cab" -Container "releases" -Blob "cab1.cab" -Context $ctx -Force
-
       - name: Upload installer bundle to Azure Blob
         shell: pwsh
         run: |

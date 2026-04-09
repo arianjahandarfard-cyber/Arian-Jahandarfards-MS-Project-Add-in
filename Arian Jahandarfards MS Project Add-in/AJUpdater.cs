@@ -64,24 +64,12 @@ namespace ArianJahandarfardsAddIn
 
                 string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
                 Directory.CreateDirectory(tempDir);
-
                 string msiPath = Path.Combine(tempDir, "AJAddIn.msi");
-                string cabPath = Path.Combine(tempDir, "cab1.cab");
-                string exePath = Path.Combine(tempDir, "AJSetup.exe");
-                string logoPath = Path.Combine(tempDir, "AJ Logo Final Files-02.png");
                 string batPath = Path.Combine(tempDir, "AJUpdate.bat");
 
-                // Download all files
-                await DownloadFile(remote.MsiUrl, msiPath);
-                await DownloadFile(remote.CabUrl, cabPath);
-                await DownloadFile(remote.InstallerUrl.Replace(".zip", "").Replace("AJToolsInstaller-v", "AJSetup-v"), exePath);
-
-                // Fallback — download installer bundle zip and extract to subfolder
-                string bundlePath = Path.Combine(tempDir, "bundle.zip");
-                await DownloadFile(remote.InstallerUrl, bundlePath);
-                string extractDir = Path.Combine(tempDir, "bundle");
-                if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
-                System.IO.Compression.ZipFile.ExtractToDirectory(bundlePath, extractDir);
+                // Download single self-contained MSI
+                byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
+                File.WriteAllBytes(msiPath, msiBytes);
 
                 string vstoPath = GetVstoInstallerPath();
                 string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
@@ -91,8 +79,8 @@ timeout /t 2 /nobreak >nul
 msiexec /fora ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
 :waitloop
 timeout /t 3 /nobreak >nul
-if not exist ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto"" goto waitloop
-""{vstoPath}"" /i ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto""
+if not exist ""{vstoTarget}"" goto waitloop
+""{vstoPath}"" /i ""{vstoTarget}""
 start """" ""WINPROJ.EXE""
 ";
                 File.WriteAllText(batPath, bat);

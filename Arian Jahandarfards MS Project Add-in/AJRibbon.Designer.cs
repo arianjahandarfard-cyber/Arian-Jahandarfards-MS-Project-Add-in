@@ -77,7 +77,7 @@
             // 
             this.btnCheckUpdates.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
             this.btnCheckUpdates.Image = ((System.Drawing.Image)(resources.GetObject("btnCheckUpdates.Image")));
-            this.btnCheckUpdates.Label = "Check For Update";
+            this.btnCheckUpdates.Label = "Update Check";
             this.btnCheckUpdates.Name = "btnCheckUpdates";
             this.btnCheckUpdates.ShowImage = true;
             this.btnCheckUpdates.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCheckUpdates_Click);

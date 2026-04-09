@@ -68,21 +68,15 @@ namespace ArianJahandarfardsAddIn
                 File.WriteAllBytes(tempZip, data);
 
                 string batchContent = $@"@echo off
-echo [%time%] Starting update >> ""{logFile}""
 echo Closing MS Project...
-echo [%time%] Killing WINPROJ.EXE >> ""{logFile}""
 taskkill /f /im WINPROJ.EXE >nul 2>&1
 timeout /t 3 /nobreak >nul
-echo [%time%] Extracting zip >> ""{logFile}""
+echo Extracting update...
 if exist ""{tempExtract}"" rmdir /s /q ""{tempExtract}""
 powershell -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{tempExtract}' -Force""
-echo [%time%] Listing extracted files >> ""{logFile}""
-dir ""{tempExtract}"" >> ""{logFile}"" 2>&1
-echo [%time%] Copying to install dir: {installDir} >> ""{logFile}""
-xcopy /e /y /i ""{tempExtract}\*"" ""{installDir}""
-echo [%time%] xcopy exit code: %errorlevel% >> ""{logFile}""
-echo [%time%] Listing install dir after copy >> ""{logFile}""
-dir ""{installDir}"" >> ""{logFile}"" 2>&1
+echo Installing via VSTO...
+rundll32 dfshim.dll CleanOnlineAppCache
+start /wait """" ""{tempExtract}\Arian Jahandarfards MS Project Add-in.vsto""
 echo Done! Relaunching MS Project...
 start """" ""WINPROJ.EXE""
 rmdir /s /q ""{tempExtract}""

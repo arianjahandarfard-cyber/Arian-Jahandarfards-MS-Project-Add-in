@@ -66,14 +66,19 @@ namespace ArianJahandarfardsAddIn
                 byte[] data = _http.GetByteArrayAsync(remote.DownloadUrl).GetAwaiter().GetResult();
                 File.WriteAllBytes(tempZip, data);
 
+                string tempExtract = Path.Combine(Path.GetTempPath(), "AJAddInUpdate");
                 string batchContent = $@"@echo off
 echo Closing MS Project...
 taskkill /f /im WINPROJ.EXE >nul 2>&1
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 echo Extracting update...
-powershell -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{installDir}' -Force""
+if exist ""{tempExtract}"" rmdir /s /q ""{tempExtract}""
+powershell -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{tempExtract}' -Force""
+echo Copying files...
+xcopy /e /y /i ""{tempExtract}\*"" ""{installDir}""
 echo Done! Relaunching MS Project...
 start """" ""WINPROJ.EXE""
+rmdir /s /q ""{tempExtract}""
 del ""{tempZip}""
 del ""%~f0""
 ";

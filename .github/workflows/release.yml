@@ -56,11 +56,16 @@ jobs:
         shell: pwsh
         run: dotnet tool install --global wix --version 4.0.5
 
+      - name: Copy AJSetup into Release folder for MSI packaging
+        shell: pwsh
+        run: |
+          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "Arian Jahandarfards MS Project Add-in\bin\Release\AJSetup.exe" -Force
+          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "Arian Jahandarfards MS Project Add-in\bin\Release\AJ Logo Final Files-02.png" -Force
+
       - name: Build MSI
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
-          $releaseDir = "$env:GITHUB_WORKSPACE\Arian Jahandarfards MS Project Add-in\bin\Release"
           wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$env:GITHUB_WORKSPACE"
 
       - name: Bundle installer package
@@ -117,7 +122,6 @@ jobs:
             version = $version
             downloadUrl = "https://ajtools.blob.core.windows.net/releases/$zipName"
             msiUrl = "https://ajtools.blob.core.windows.net/releases/$msiName"
-            cabUrl = "https://ajtools.blob.core.windows.net/releases/cab1.cab"
             installerUrl = "https://ajtools.blob.core.windows.net/releases/$bundleName"
             releaseNotes = "Version $version"
           } | ConvertTo-Json

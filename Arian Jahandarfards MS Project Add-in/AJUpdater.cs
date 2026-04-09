@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Arian_Jahandarfards_MS_Project_Add_in;
@@ -60,26 +62,39 @@ namespace ArianJahandarfardsAddIn
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-                // Download MSI to temp folder
                 string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
                 Directory.CreateDirectory(tempDir);
+
                 string msiPath = Path.Combine(tempDir, "AJAddIn.msi");
+                string cabPath = Path.Combine(tempDir, "cab1.cab");
+                string exePath = Path.Combine(tempDir, "AJSetup.exe");
+                string logoPath = Path.Combine(tempDir, "AJ Logo Final Files-02.png");
                 string batPath = Path.Combine(tempDir, "AJUpdate.bat");
 
-                byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
-                File.WriteAllBytes(msiPath, msiBytes);
+                // Download all files
+                await DownloadFile(remote.MsiUrl, msiPath);
+                await DownloadFile(remote.CabUrl, cabPath);
+                await DownloadFile(remote.InstallerUrl.Replace(".zip", "").Replace("AJToolsInstaller-v", "AJSetup-v"), exePath);
 
-                // Write batch script that installs MSI + registers VSTO, then relaunches MS Project
+                // Fallback — download installer bundle zip and extract
+                string bundlePath = Path.Combine(tempDir, "bundle.zip");
+                await DownloadFile(remote.InstallerUrl, bundlePath);
+                System.IO.Compression.ZipFile.ExtractToDirectory(bundlePath, tempDir, true);
+
+                string vstoPath = GetVstoInstallerPath();
+                string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
+
+                // Write batch that installs MSI + VSTO then relaunches MS Project
                 string bat = $@"@echo off
 timeout /t 2 /nobreak >nul
 msiexec /i ""{msiPath}"" /quiet /norestart
-""{GetVstoInstallerPath()}"" /i ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto""
+timeout /t 5 /nobreak >nul
+""{vstoPath}"" /i ""{vstoTarget}""
 start """" ""WINPROJ.EXE""
 ";
                 File.WriteAllText(batPath, bat);
 
-                // Launch bat elevated and close MS Project
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                Process.Start(new ProcessStartInfo
                 {
                     FileName = batPath,
                     UseShellExecute = true,
@@ -95,13 +110,19 @@ start """" ""WINPROJ.EXE""
             }
         }
 
+        private static async Task DownloadFile(string url, string path)
+        {
+            byte[] bytes = await _http.GetByteArrayAsync(url);
+            File.WriteAllBytes(path, bytes);
+        }
+
         private static string GetVstoInstallerPath()
         {
-            string path64 = @"C:\Program Files\Common Files\microsoft shared\VSTO\10.0\VSTOInstaller.exe";
             string path86 = @"C:\Program Files (x86)\Common Files\Microsoft Shared\VSTO\10.0\VSTOInstaller.exe";
+            string path64 = @"C:\Program Files\Common Files\microsoft shared\VSTO\10.0\VSTOInstaller.exe";
             if (File.Exists(path86)) return path86;
             if (File.Exists(path64)) return path64;
-            throw new Exception("VSTOInstaller.exe not found on this machine.");
+            throw new Exception("VSTO Runtime not found on this machine.");
         }
 
         private class VersionManifest
@@ -109,6 +130,8 @@ start """" ""WINPROJ.EXE""
             [JsonProperty("version")] public string Version { get; set; }
             [JsonProperty("downloadUrl")] public string DownloadUrl { get; set; }
             [JsonProperty("msiUrl")] public string MsiUrl { get; set; }
+            [JsonProperty("cabUrl")] public string CabUrl { get; set; }
+            [JsonProperty("installerUrl")] public string InstallerUrl { get; set; }
             [JsonProperty("releaseNotes")] public string ReleaseNotes { get; set; }
         }
     }

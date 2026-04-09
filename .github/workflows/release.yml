@@ -65,11 +65,23 @@ jobs:
           Write-Host "Files in Release dir:"
           Get-ChildItem $releaseDir | Select-Object Name
 
-      - name: Build MSI
+   - name: Build MSI
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
-          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$env:GITHUB_WORKSPACE"
+          $src = "$env:GITHUB_WORKSPACE"
+          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$src"
+          Write-Host "MSI size: $((Get-Item AJAddIn.msi).Length) bytes"
+          Write-Host "MSI files:"
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $db = $installer.OpenDatabase("$pwd\AJAddIn.msi", 0)
+          $view = $db.OpenView("SELECT * FROM File")
+          $view.Execute()
+          $record = $view.Fetch()
+          while ($record -ne $null) {
+            Write-Host $record.StringData(1)
+            $record = $view.Fetch()
+          }
 
       - name: Bundle installer package
         shell: pwsh

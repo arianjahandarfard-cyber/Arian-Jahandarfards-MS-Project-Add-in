@@ -69,7 +69,6 @@ jobs:
           $version = "${{ steps.get_version.outputs.VERSION }}"
           New-Item -ItemType Directory -Force -Path "AJToolsInstaller-v$version"
           Copy-Item "AJAddIn.msi" "AJToolsInstaller-v$version\"
-          Copy-Item "AJToolsInstaller\cab1.cab" "AJToolsInstaller-v$version\"
           Copy-Item "AJSetup\bin\Release\AJSetup.exe" "AJToolsInstaller-v$version\"
           Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "AJToolsInstaller-v$version\"
           Compress-Archive -Path "AJToolsInstaller-v$version\*" -DestinationPath "AJToolsInstaller-v$version.zip"

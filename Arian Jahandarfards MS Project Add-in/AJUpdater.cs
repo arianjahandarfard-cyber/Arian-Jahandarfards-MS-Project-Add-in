@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Arian_Jahandarfards_MS_Project_Add_in;
@@ -56,38 +55,37 @@ namespace ArianJahandarfardsAddIn
         {
             try
             {
-                MessageBox.Show(
-                    "The update will now download and install.\nMS Project will close and relaunch automatically.",
-                    "AJ Tools — Installing Update",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-
+                // Download new MSI to temp folder
                 string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
                 Directory.CreateDirectory(tempDir);
                 string msiPath = Path.Combine(tempDir, "AJAddIn.msi");
-                string batPath = Path.Combine(tempDir, "AJUpdate.bat");
 
-                // Download single self-contained MSI
+                MessageBox.Show(
+                    "Downloading update... MS Project will close and relaunch automatically after install.",
+                    "AJ Tools — Downloading Update",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
                 byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
                 File.WriteAllBytes(msiPath, msiBytes);
 
-                string bat = $@"@echo off
-timeout /t 2 /nobreak >nul
-powershell -Command ""$p = Get-WmiObject -Class Win32_Product | Where-Object {{$_.Name -eq 'AJ Tools'}}; if ($p) {{ $p.Uninstall() }}""
-timeout /t 5 /nobreak >nul
-msiexec /i ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
-timeout /t 5 /nobreak >nul
-start """" ""WINPROJ.EXE""
-";
-                File.WriteAllText(batPath, bat);
+                // Find AJSetup.exe — it lives next to the DLL
+                string addInDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string setupExe = Path.Combine(addInDir, "AJSetup.exe");
 
+                if (!File.Exists(setupExe))
+                    throw new Exception($"AJSetup.exe not found at:\n{setupExe}");
+
+                // Launch AJSetup.exe in silent update mode
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = batPath,
+                    FileName = setupExe,
+                    Arguments = $"/update \"{msiPath}\"",
                     UseShellExecute = true,
                     Verb = "runas"
                 });
 
+                // Quit MS Project — AJSetup handles everything from here
                 Globals.ThisAddIn.Application.Quit();
             }
             catch (Exception ex)
@@ -97,28 +95,11 @@ start """" ""WINPROJ.EXE""
             }
         }
 
-        private static async Task DownloadFile(string url, string path)
-        {
-            byte[] bytes = await _http.GetByteArrayAsync(url);
-            File.WriteAllBytes(path, bytes);
-        }
-
-        private static string GetVstoInstallerPath()
-        {
-            string path86 = @"C:\Program Files (x86)\Common Files\Microsoft Shared\VSTO\10.0\VSTOInstaller.exe";
-            string path64 = @"C:\Program Files\Common Files\microsoft shared\VSTO\10.0\VSTOInstaller.exe";
-            if (File.Exists(path86)) return path86;
-            if (File.Exists(path64)) return path64;
-            throw new Exception("VSTO Runtime not found on this machine.");
-        }
-
         private class VersionManifest
         {
             [JsonProperty("version")] public string Version { get; set; }
             [JsonProperty("downloadUrl")] public string DownloadUrl { get; set; }
             [JsonProperty("msiUrl")] public string MsiUrl { get; set; }
-            [JsonProperty("cabUrl")] public string CabUrl { get; set; }
-            [JsonProperty("installerUrl")] public string InstallerUrl { get; set; }
             [JsonProperty("releaseNotes")] public string ReleaseNotes { get; set; }
         }
     }

@@ -20,10 +20,21 @@ namespace AJSetup
         private Panel panelTop;
         private Panel panelBottom;
 
-        public Form1()
+        private string _silentMsiPath = null;
+
+        public Form1(string silentMsiPath = null)
         {
             InitializeComponent();
+            _silentMsiPath = silentMsiPath;
             BuildUI();
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            // If launched in silent update mode, start install immediately
+            if (_silentMsiPath != null)
+                BtnInstall_Click(this, EventArgs.Empty);
         }
 
         private void BuildUI()
@@ -35,21 +46,18 @@ namespace AJSetup
             this.MaximizeBox = false;
             this.BackColor = Color.White;
 
-            // Top panel — white background so logo is fully visible
             panelTop = new Panel();
             panelTop.BackColor = Color.White;
             panelTop.Dock = DockStyle.Top;
             panelTop.Height = 130;
             this.Controls.Add(panelTop);
 
-            // Navy accent bar at top
             Panel accentBar = new Panel();
             accentBar.BackColor = Color.FromArgb(1, 44, 100);
             accentBar.Dock = DockStyle.Top;
             accentBar.Height = 6;
             panelTop.Controls.Add(accentBar);
 
-            // Logo
             picLogo = new PictureBox();
             picLogo.Size = new Size(280, 95);
             picLogo.Location = new Point(20, 18);
@@ -65,23 +73,20 @@ namespace AJSetup
             catch { }
             panelTop.Controls.Add(picLogo);
 
-            // Divider line
             Panel divider = new Panel();
             divider.BackColor = Color.FromArgb(220, 220, 220);
             divider.Size = new Size(540, 1);
             divider.Location = new Point(0, 129);
             this.Controls.Add(divider);
 
-            // Title
             lblTitle = new Label();
-            lblTitle.Text = "AJ Tools for MS Project";
+            lblTitle.Text = _silentMsiPath != null ? "AJ Tools — Updating..." : "AJ Tools for MS Project";
             lblTitle.Font = new Font("Segoe UI", 15f, FontStyle.Bold);
             lblTitle.ForeColor = Color.FromArgb(1, 44, 100);
             lblTitle.AutoSize = true;
             lblTitle.Location = new Point(20, 145);
             this.Controls.Add(lblTitle);
 
-            // Subtitle
             lblSubtitle = new Label();
             lblSubtitle.Text = "Developed by Arian Jahandarfard\r\nThis installer will set up AJ Tools in Microsoft Project.";
             lblSubtitle.Font = new Font("Segoe UI", 9f);
@@ -90,7 +95,6 @@ namespace AJSetup
             lblSubtitle.Location = new Point(22, 182);
             this.Controls.Add(lblSubtitle);
 
-            // Progress bar
             progressBar = new ProgressBar();
             progressBar.Size = new Size(494, 18);
             progressBar.Location = new Point(22, 255);
@@ -99,7 +103,6 @@ namespace AJSetup
             progressBar.MarqueeAnimationSpeed = 30;
             this.Controls.Add(progressBar);
 
-            // Status label
             lblStatus = new Label();
             lblStatus.Text = "";
             lblStatus.Font = new Font("Segoe UI", 9f);
@@ -108,16 +111,14 @@ namespace AJSetup
             lblStatus.Location = new Point(22, 278);
             this.Controls.Add(lblStatus);
 
-            // Bottom panel
             panelBottom = new Panel();
             panelBottom.BackColor = Color.FromArgb(240, 240, 240);
             panelBottom.Dock = DockStyle.Bottom;
             panelBottom.Height = 55;
             this.Controls.Add(panelBottom);
 
-            // Install button
             btnInstall = new Button();
-            btnInstall.Text = "Install";
+            btnInstall.Text = _silentMsiPath != null ? "Updating..." : "Install";
             btnInstall.Size = new Size(110, 34);
             btnInstall.Location = new Point(408, 10);
             btnInstall.BackColor = Color.FromArgb(1, 44, 100);
@@ -129,7 +130,6 @@ namespace AJSetup
             btnInstall.Click += BtnInstall_Click;
             panelBottom.Controls.Add(btnInstall);
 
-            // Cancel button
             Button btnCancel = new Button();
             btnCancel.Text = "Cancel";
             btnCancel.Size = new Size(80, 34);
@@ -151,28 +151,43 @@ namespace AJSetup
 
             try
             {
-                string exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                string msiPath = Path.Combine(exeDir, "AJAddIn.msi");
+                // Use provided MSI path (update mode) or find it next to EXE (fresh install)
+                string msiPath = _silentMsiPath ?? Path.Combine(
+                    Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),
+                    "AJAddIn.msi");
 
                 if (!File.Exists(msiPath))
                     throw new Exception($"AJAddIn.msi not found.\nExpected: {msiPath}");
 
-                // Step 1: Run MSI
-                lblStatus.Text = "Installing files...";
-                string logPath = Path.Combine(Path.GetTempPath(), "AJSetup.log");
-                var msiProcess = new Process();
-                msiProcess.StartInfo.FileName = "msiexec";
-                msiProcess.StartInfo.Arguments = $"/i \"{msiPath}\" /quiet /norestart /l*v \"{logPath}\"";
-                msiProcess.StartInfo.UseShellExecute = true;
-                msiProcess.Start();
-                await Task.Run(() => msiProcess.WaitForExit());
+                // Uninstall existing version first
+                lblStatus.Text = "Removing previous version...";
+                var uninstallProcess = new Process();
+                uninstallProcess.StartInfo.FileName = "msiexec";
+                uninstallProcess.StartInfo.Arguments = $"/x \"{msiPath}\" /quiet /norestart";
+                uninstallProcess.StartInfo.UseShellExecute = false;
+                uninstallProcess.StartInfo.CreateNoWindow = true;
+                uninstallProcess.Start();
+                await Task.Run(() => uninstallProcess.WaitForExit());
 
-                // Step 2: Wait up to 30 seconds for files to appear
-                lblStatus.Text = "Verifying installation...";
+                // Wait a moment
+                await Task.Delay(2000);
+
+                // Install new version
+                lblStatus.Text = "Installing new version...";
+                var installProcess = new Process();
+                installProcess.StartInfo.FileName = "msiexec";
+                installProcess.StartInfo.Arguments = $"/i \"{msiPath}\" /quiet /norestart /l*v \"{Path.GetTempPath()}AJSetup.log\"";
+                installProcess.StartInfo.UseShellExecute = false;
+                installProcess.StartInfo.CreateNoWindow = true;
+                installProcess.Start();
+                await Task.Run(() => installProcess.WaitForExit());
+
+                // Verify
+                lblStatus.Text = "Verifying...";
                 string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
-                bool filesFound = await Task.Run(() =>
+                bool success = await Task.Run(() =>
                 {
-                    for (int i = 0; i < 30; i++)
+                    for (int i = 0; i < 15; i++)
                     {
                         if (File.Exists(vstoTarget)) return true;
                         Thread.Sleep(1000);
@@ -180,10 +195,10 @@ namespace AJSetup
                     return false;
                 });
 
-                if (!filesFound)
-                    throw new Exception("Files did not install correctly. Please ensure you have administrator rights.");
+                if (!success)
+                    throw new Exception("Files did not install correctly.");
 
-                // Step 3: Register VSTO
+                // Register VSTO
                 lblStatus.Text = "Registering with MS Project...";
                 string vstoInstaller = GetVstoInstallerPath();
                 var vstoProcess = new Process();
@@ -196,18 +211,25 @@ namespace AJSetup
                 progressBar.Visible = false;
                 lblStatus.Text = "";
 
-                MessageBox.Show(
-                    "AJ Tools has been successfully installed!\n\nOpen Microsoft Project to get started.",
-                    "Installation Complete",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                if (_silentMsiPath != null)
+                {
+                    // Update mode — relaunch MS Project automatically
+                    MessageBox.Show("AJ Tools updated successfully!\n\nMicrosoft Project will now relaunch.",
+                        "Update Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Process.Start("WINPROJ.EXE");
+                }
+                else
+                {
+                    MessageBox.Show("AJ Tools installed successfully!\n\nOpen Microsoft Project to get started.",
+                        "Installation Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
 
                 this.Close();
             }
             catch (Exception ex)
             {
                 progressBar.Visible = false;
-                lblStatus.Text = "Installation failed.";
+                lblStatus.Text = "Failed.";
                 MessageBox.Show($"Installation failed:\n{ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 btnInstall.Enabled = true;

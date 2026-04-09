@@ -1,22 +1,29 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace AJSetup
 {
-    internal static class Program
+    static class Program
     {
-        /// <summary>
-        /// The main entry point for the application.
-        /// </summary>
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+
+            string silentMsiPath = null;
+
+            // Check for /update "path\to\msi" argument
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i].ToLower() == "/update" && i + 1 < args.Length)
+                {
+                    silentMsiPath = args[i + 1];
+                    break;
+                }
+            }
+
+            Application.Run(new Form1(silentMsiPath));
         }
     }
 }

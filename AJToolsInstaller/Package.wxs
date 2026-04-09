@@ -5,16 +5,13 @@
            Version="$(var.Version)"
            UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
            Scope="perMachine">
-
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <MediaTemplate EmbedCab="yes" />
-
     <Feature Id="MainFeature" Title="AJ Tools">
       <ComponentGroupRef Id="AJFilesGroup" />
       <ComponentGroupRef Id="AJRegistryGroup" />
     </Feature>
   </Package>
-
   <Fragment>
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder">
@@ -22,7 +19,6 @@
       </Directory>
     </Directory>
   </Fragment>
-
   <Fragment>
     <ComponentGroup Id="AJFilesGroup" Directory="INSTALLFOLDER">
       <Component Id="AJDllComp" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
@@ -50,9 +46,18 @@
               Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\Newtonsoft.Json.dll"
               KeyPath="yes" />
       </Component>
+      <Component Id="AJSetupComp" Guid="B8C9D0E1-F2A3-4567-1234-890123456789">
+        <File Id="AJSetupExe"
+              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\AJSetup.exe"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="AJLogoComp" Guid="C9D0E1F2-A3B4-5678-2345-901234567890">
+        <File Id="AJLogo"
+              Source="$(var.SourceDir)\Arian Jahandarfards MS Project Add-in\bin\Release\AJ Logo Final Files-02.png"
+              KeyPath="yes" />
+      </Component>
     </ComponentGroup>
   </Fragment>
-
   <Fragment>
     <ComponentGroup Id="AJRegistryGroup" Directory="INSTALLFOLDER">
       <Component Id="AJRegComp" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">

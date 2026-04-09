@@ -1,0 +1,32 @@
+﻿=================
+Begin Activation Context Generation.
+Input Parameter:
+	Flags = 0
+	ProcessorArchitecture = Wow32
+	CultureFallBacks = en-US;en
+	ManifestPath = C:\Users\arian\source\repos\Arian Jahandarfards MS Project Add-in\AJSetup\bin\Release\AJSetup.exe
+	AssemblyDirectory = C:\Users\arian\source\repos\Arian Jahandarfards MS Project Add-in\AJSetup\bin\Release\
+	Application Config File = C:\Users\arian\source\repos\Arian Jahandarfards MS Project Add-in\AJSetup\bin\Release\AJSetup.exe.Config
+-----------------
+INFO: Parsing Application Config File C:\Users\arian\source\repos\Arian Jahandarfards MS Project Add-in\AJSetup\bin\Release\AJSetup.exe.Config.
+INFO: Parsing Manifest File C:\Users\arian\source\repos\Arian Jahandarfards MS Project Add-in\AJSetup\bin\Release\AJSetup.exe.
+	INFO: Manifest Definition Identity is AJSetup.exe,version="1.0.0.0".
+	ERROR: Line 7: The attribute uacProtection="false" />
+			</requestedPrivileges>
+		</security>
+	</trustInfo>
+	<compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+		<application>
+			<supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+		</application>
+	</compatibility>
+	<dependency>
+		<dependentAssembly>
+			<assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls"
+			  version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+		</dependentAssembly>
+	</dependency>
+</assembly> is not permitted in this context on element requestedExecutionLevel.
+ERROR: Activation Context generation failed.
+End Activation Context Generation.
+

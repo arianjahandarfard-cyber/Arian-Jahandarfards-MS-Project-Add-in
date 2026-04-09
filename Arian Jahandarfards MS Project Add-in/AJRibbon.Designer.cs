@@ -26,15 +26,15 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AJRibbon));
             this.tab1 = this.Factory.CreateRibbonTab();
             this.Update = this.Factory.CreateRibbonGroup();
-            this.btnCheckUpdates = this.Factory.CreateRibbonButton();
             this.group1 = this.Factory.CreateRibbonGroup();
+            this.group2 = this.Factory.CreateRibbonGroup();
+            this.btnCheckUpdates = this.Factory.CreateRibbonButton();
             this.btnCapture = this.Factory.CreateRibbonButton();
             this.btnReset = this.Factory.CreateRibbonButton();
             this.btnRun = this.Factory.CreateRibbonButton();
             this.btnStartAuto = this.Factory.CreateRibbonButton();
             this.btnStopAuto = this.Factory.CreateRibbonButton();
             this.btnSettings = this.Factory.CreateRibbonButton();
-            this.group2 = this.Factory.CreateRibbonGroup();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
             this.tab1.SuspendLayout();
             this.Update.SuspendLayout();
@@ -54,17 +54,7 @@
             // Update
             // 
             this.Update.Items.Add(this.btnCheckUpdates);
-            this.Update.Label = "Update";
             this.Update.Name = "Update";
-            // 
-            // btnCheckUpdates
-            // 
-            this.btnCheckUpdates.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnCheckUpdates.Image = ((System.Drawing.Image)(resources.GetObject("btnCheckUpdates.Image")));
-            this.btnCheckUpdates.Label = "Check For Update";
-            this.btnCheckUpdates.Name = "btnCheckUpdates";
-            this.btnCheckUpdates.ShowImage = true;
-            this.btnCheckUpdates.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCheckUpdates_Click);
             // 
             // group1
             // 
@@ -76,6 +66,21 @@
             this.group1.Items.Add(this.btnSettings);
             this.group1.Label = "Milestone Tracker";
             this.group1.Name = "group1";
+            // 
+            // group2
+            // 
+            this.group2.Items.Add(this.btnGoToUID);
+            this.group2.Label = "-----";
+            this.group2.Name = "group2";
+            // 
+            // btnCheckUpdates
+            // 
+            this.btnCheckUpdates.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.btnCheckUpdates.Image = ((System.Drawing.Image)(resources.GetObject("btnCheckUpdates.Image")));
+            this.btnCheckUpdates.Label = "Check For Update";
+            this.btnCheckUpdates.Name = "btnCheckUpdates";
+            this.btnCheckUpdates.ShowImage = true;
+            this.btnCheckUpdates.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCheckUpdates_Click);
             // 
             // btnCapture
             // 
@@ -127,12 +132,6 @@
             this.btnSettings.Name = "btnSettings";
             this.btnSettings.ShowImage = true;
             this.btnSettings.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnSettings_Click);
-            // 
-            // group2
-            // 
-            this.group2.Items.Add(this.btnGoToUID);
-            this.group2.Label = "-----";
-            this.group2.Name = "group2";
             // 
             // btnGoToUID
             // 

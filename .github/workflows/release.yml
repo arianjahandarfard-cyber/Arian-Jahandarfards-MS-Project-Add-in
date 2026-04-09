@@ -43,9 +43,13 @@ jobs:
         id: get_version
         shell: pwsh
         run: |
-          $content = Get-Content "Arian Jahandarfards MS Project Add-in/Properties/AssemblyInfo.cs"
-          $line = $content | Select-String 'AssemblyVersion\("(.+?)"\)'
-          $version = $line.Matches[0].Groups[1].Value
+          $content = Get-Content "Arian Jahandarfards MS Project Add-in/Properties/AssemblyInfo.cs" -Raw
+          if ($content -match '\[assembly: AssemblyVersion\("(\d+\.\d+\.\d+\.\d+)"\)\]') {
+            $version = $Matches[1]
+          } else {
+            Write-Error "Could not find AssemblyVersion"
+            exit 1
+          }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Zip output

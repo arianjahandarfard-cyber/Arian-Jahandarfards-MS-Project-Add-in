@@ -71,16 +71,12 @@ namespace ArianJahandarfardsAddIn
                 byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
                 File.WriteAllBytes(msiPath, msiBytes);
 
-                string vstoPath = GetVstoInstallerPath();
-                string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
-
                 string bat = $@"@echo off
 timeout /t 2 /nobreak >nul
-msiexec /fora ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
-:waitloop
-timeout /t 3 /nobreak >nul
-if not exist ""{vstoTarget}"" goto waitloop
-""{vstoPath}"" /i ""{vstoTarget}""
+powershell -Command ""$p = Get-WmiObject -Class Win32_Product | Where-Object {{$_.Name -eq 'AJ Tools'}}; if ($p) {{ $p.Uninstall() }}""
+timeout /t 5 /nobreak >nul
+msiexec /i ""{msiPath}"" /quiet /norestart /l*v ""{tempDir}\msi.log""
+timeout /t 5 /nobreak >nul
 start """" ""WINPROJ.EXE""
 ";
                 File.WriteAllText(batPath, bat);

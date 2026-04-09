@@ -59,8 +59,11 @@ jobs:
       - name: Copy AJSetup into Release folder for MSI packaging
         shell: pwsh
         run: |
-          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "Arian Jahandarfards MS Project Add-in\bin\Release\AJSetup.exe" -Force
-          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "Arian Jahandarfards MS Project Add-in\bin\Release\AJ Logo Final Files-02.png" -Force
+          $releaseDir = "$env:GITHUB_WORKSPACE\Arian Jahandarfards MS Project Add-in\bin\Release"
+          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "$releaseDir\AJSetup.exe" -Force
+          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "$releaseDir\AJ Logo Final Files-02.png" -Force
+          Write-Host "Files in Release dir:"
+          Get-ChildItem $releaseDir | Select-Object Name
 
       - name: Build MSI
         shell: pwsh

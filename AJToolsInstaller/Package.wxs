@@ -4,10 +4,11 @@
            Manufacturer="Arian Jahandarfard"
            Version="$(var.Version)"
            UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
-           Scope="perMachine"
-           Compressed="yes">
+           Scope="perMachine">
 
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
     <Feature Id="MainFeature" Title="AJ Tools">
       <ComponentGroupRef Id="AJFilesGroup" />
       <ComponentGroupRef Id="AJRegistryGroup" />

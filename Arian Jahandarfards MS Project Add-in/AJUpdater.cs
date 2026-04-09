@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Arian_Jahandarfards_MS_Project_Add_in;
@@ -57,13 +58,16 @@ namespace ArianJahandarfardsAddIn
 
             try
             {
-                MessageBox.Show("Downloading update... MS Project will close and reopen automatically.\n\nClick OK to begin.", "AJ Tools — Downloading", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    "Downloading update... MS Project will close and reopen automatically.\n\nClick OK to begin.",
+                    "AJ Tools — Downloading",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
 
                 byte[] data = await _http.GetByteArrayAsync(remote.DownloadUrl);
                 File.WriteAllBytes(tempZip, data);
 
-                string batchContent = $@"
-@echo off
+                string batchContent = $@"@echo off
 echo Waiting for MS Project to close...
 :waitloop
 tasklist /fi ""imagename eq WINPROJ.EXE"" 2>nul | find /i ""WINPROJ.EXE"" >nul
@@ -79,6 +83,7 @@ del ""{tempZip}""
 del ""%~f0""
 ";
                 File.WriteAllText(updaterScript, batchContent);
+
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = updaterScript,
@@ -86,12 +91,26 @@ del ""%~f0""
                     CreateNoWindow = false
                 });
 
-                await Task.Delay(2000);
-                Globals.ThisAddIn.Application.Quit();
+                // Fire quit on a separate non-background thread to avoid async thread abort
+                Thread quitThread = new Thread(() =>
+                {
+                    Thread.Sleep(3000);
+                    try
+                    {
+                        Globals.ThisAddIn.Application.Quit();
+                    }
+                    catch { /* ignore, process is closing anyway */ }
+                });
+                quitThread.IsBackground = false;
+                quitThread.Start();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Update failed:\n{ex.Message}\n\nPlease update manually.", "AJ Tools — Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(
+                    $"Update failed:\n{ex.Message}\n\nPlease update manually.",
+                    "AJ Tools — Update Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
                 if (File.Exists(tempZip)) File.Delete(tempZip);
             }
         }

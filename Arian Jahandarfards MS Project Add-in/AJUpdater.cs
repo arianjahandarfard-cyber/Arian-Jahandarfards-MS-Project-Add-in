@@ -2,10 +2,8 @@
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Arian_Jahandarfards_MS_Project_Add_in;
 using Newtonsoft.Json;
 
 namespace ArianJahandarfardsAddIn
@@ -68,13 +66,9 @@ namespace ArianJahandarfardsAddIn
                 File.WriteAllBytes(tempZip, data);
 
                 string batchContent = $@"@echo off
-echo Waiting for MS Project to close...
-:waitloop
-tasklist /fi ""imagename eq WINPROJ.EXE"" 2>nul | find /i ""WINPROJ.EXE"" >nul
-if not errorlevel 1 (
-    timeout /t 2 /nobreak >nul
-    goto waitloop
-)
+echo Closing MS Project...
+taskkill /f /im WINPROJ.EXE >nul 2>&1
+timeout /t 2 /nobreak >nul
 echo Extracting update...
 powershell -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{installDir}' -Force""
 echo Done! Relaunching MS Project...
@@ -90,19 +84,6 @@ del ""%~f0""
                     WindowStyle = System.Diagnostics.ProcessWindowStyle.Normal,
                     CreateNoWindow = false
                 });
-
-                // Fire quit on a separate non-background thread to avoid async thread abort
-                Thread quitThread = new Thread(() =>
-                {
-                    Thread.Sleep(3000);
-                    try
-                    {
-                        Globals.ThisAddIn.Application.Quit();
-                    }
-                    catch { /* ignore, process is closing anyway */ }
-                });
-                quitThread.IsBackground = false;
-                quitThread.Start();
             }
             catch (Exception ex)
             {

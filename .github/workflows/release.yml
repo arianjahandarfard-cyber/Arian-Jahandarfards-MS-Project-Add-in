@@ -79,7 +79,7 @@ jobs:
           } | ConvertTo-Json
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/arianjahandarfard-cyber/version.json.git versionrepo
+          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/arianjahandarfard-cyber/version.json.git versionrepo
           $json | Set-Content "versionrepo/version.json"
           Set-Location versionrepo
           git add version.json

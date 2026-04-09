@@ -1,0 +1,6 @@
+@echo off
+echo Installing AJ Tools...
+msiexec /i "%~dp0AJAddIn.msi" /quiet
+echo Registering with MS Project...
+"C:\Program Files (x86)\Common Files\Microsoft Shared\VSTO\10.0\VSTOInstaller.exe" /i "C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto"
+echo Done!

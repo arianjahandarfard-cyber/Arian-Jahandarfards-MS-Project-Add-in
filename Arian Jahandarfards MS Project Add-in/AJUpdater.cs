@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Arian_Jahandarfards_MS_Project_Add_in;
 using Newtonsoft.Json;
 
 namespace ArianJahandarfardsAddIn
@@ -11,7 +12,6 @@ namespace ArianJahandarfardsAddIn
     public static class AJUpdater
     {
         private const string VERSION_CHECK_URL = "https://arianjahandarfard-cyber.github.io/version.json/version.json";
-
         private static readonly HttpClient _http = new HttpClient();
 
         public static async Task CheckForUpdatesAsync(bool silent = false)
@@ -33,80 +33,82 @@ namespace ArianJahandarfardsAddIn
                         MessageBoxIcon.Information);
 
                     if (result == DialogResult.Yes)
-                        DownloadAndInstall(remote);
+                        await DownloadAndInstall(remote);
                 }
                 else
                 {
                     if (!silent)
-                        MessageBox.Show($"You're up to date! (v{currentVersion})", "AJ Tools — No Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show($"You're up to date! (v{currentVersion})", "AJ Tools — No Updates",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)
             {
                 if (!silent)
-                    MessageBox.Show($"Could not check for updates:\n{ex.Message}", "AJ Tools — Update Check Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show($"Could not check for updates:\n{ex.Message}", "AJ Tools — Update Check Failed",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
-        private static void DownloadAndInstall(VersionManifest remote)
+        private static async Task DownloadAndInstall(VersionManifest remote)
         {
-            string tempZip = Path.Combine(Path.GetTempPath(), $"AJAddIn-{remote.Version}.zip");
-            string tempExtract = Path.Combine(Path.GetTempPath(), "AJAddInUpdate");
-            string installDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string updaterScript = Path.Combine(Path.GetTempPath(), "AJUpdater.bat");
-            string logFile = Path.Combine(Path.GetTempPath(), "AJUpdater.log");
-
             try
             {
                 MessageBox.Show(
-                    "Downloading update... MS Project will close and reopen automatically.\n\nClick OK to begin.",
-                    "AJ Tools — Downloading",
+                    "The update will now download and install.\nMS Project will close and relaunch automatically.",
+                    "AJ Tools — Installing Update",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-                byte[] data = _http.GetByteArrayAsync(remote.DownloadUrl).GetAwaiter().GetResult();
-                File.WriteAllBytes(tempZip, data);
+                // Download MSI to temp folder
+                string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
+                Directory.CreateDirectory(tempDir);
+                string msiPath = Path.Combine(tempDir, "AJAddIn.msi");
+                string batPath = Path.Combine(tempDir, "AJUpdate.bat");
 
-                string batchContent = $@"@echo off
-echo Closing MS Project...
-taskkill /f /im WINPROJ.EXE >nul 2>&1
-timeout /t 3 /nobreak >nul
-echo Extracting update...
-if exist ""{tempExtract}"" rmdir /s /q ""{tempExtract}""
-powershell -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{tempExtract}' -Force""
-echo Installing via VSTO...
-rundll32 dfshim.dll CleanOnlineAppCache
-start /wait """" ""{tempExtract}\Arian Jahandarfards MS Project Add-in.vsto""
-echo Done! Relaunching MS Project...
+                byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
+                File.WriteAllBytes(msiPath, msiBytes);
+
+                // Write batch script that installs MSI + registers VSTO, then relaunches MS Project
+                string bat = $@"@echo off
+timeout /t 2 /nobreak >nul
+msiexec /i ""{msiPath}"" /quiet /norestart
+""{GetVstoInstallerPath()}"" /i ""C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto""
 start """" ""WINPROJ.EXE""
-rmdir /s /q ""{tempExtract}""
-del ""{tempZip}""
-del ""%~f0""
 ";
-                File.WriteAllText(updaterScript, batchContent);
+                File.WriteAllText(batPath, bat);
 
+                // Launch bat elevated and close MS Project
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = updaterScript,
-                    WindowStyle = System.Diagnostics.ProcessWindowStyle.Normal,
-                    CreateNoWindow = false
+                    FileName = batPath,
+                    UseShellExecute = true,
+                    Verb = "runas"
                 });
+
+                Globals.ThisAddIn.Application.Quit();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    $"Update failed:\n{ex.Message}\n\nPlease update manually.",
-                    "AJ Tools — Update Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-                if (File.Exists(tempZip)) File.Delete(tempZip);
+                MessageBox.Show($"Update failed:\n{ex.Message}", "AJ Tools — Update Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private static string GetVstoInstallerPath()
+        {
+            string path64 = @"C:\Program Files\Common Files\microsoft shared\VSTO\10.0\VSTOInstaller.exe";
+            string path86 = @"C:\Program Files (x86)\Common Files\Microsoft Shared\VSTO\10.0\VSTOInstaller.exe";
+            if (File.Exists(path86)) return path86;
+            if (File.Exists(path64)) return path64;
+            throw new Exception("VSTOInstaller.exe not found on this machine.");
         }
 
         private class VersionManifest
         {
             [JsonProperty("version")] public string Version { get; set; }
             [JsonProperty("downloadUrl")] public string DownloadUrl { get; set; }
+            [JsonProperty("msiUrl")] public string MsiUrl { get; set; }
             [JsonProperty("releaseNotes")] public string ReleaseNotes { get; set; }
         }
     }

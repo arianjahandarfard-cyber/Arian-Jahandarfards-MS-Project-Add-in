@@ -15,6 +15,7 @@ namespace ArianJahandarfardsAddIn
         private const string VERSION_CHECK_URL =
             "https://arianjahandarfard-cyber.github.io/version.json/version.json";
         private static readonly HttpClient _http = new HttpClient();
+        private static Timer _pendingQuitTimer;
 
         public static async Task CheckForUpdatesAsync(bool silent = false)
         {
@@ -57,7 +58,7 @@ namespace ArianJahandarfardsAddIn
                     return;
 
                 LaunchSetup(remote.MsiUrl, remote.Version);
-                Globals.ThisAddIn.Application.Quit();
+                ScheduleProjectQuit();
             }
             catch (Exception ex)
             {
@@ -68,6 +69,29 @@ namespace ArianJahandarfardsAddIn
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
             }
+        }
+
+        private static void ScheduleProjectQuit()
+        {
+            _pendingQuitTimer?.Stop();
+            _pendingQuitTimer?.Dispose();
+
+            _pendingQuitTimer = new Timer { Interval = 250 };
+            _pendingQuitTimer.Tick += (sender, args) =>
+            {
+                _pendingQuitTimer.Stop();
+                _pendingQuitTimer.Dispose();
+                _pendingQuitTimer = null;
+
+                try
+                {
+                    Globals.ThisAddIn.Application.Quit();
+                }
+                catch
+                {
+                }
+            };
+            _pendingQuitTimer.Start();
         }
 
         private static void LaunchSetup(string msiUrl, string newVersion)

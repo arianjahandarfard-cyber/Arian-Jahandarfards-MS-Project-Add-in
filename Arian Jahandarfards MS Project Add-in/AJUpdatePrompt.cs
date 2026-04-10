@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -237,19 +236,11 @@ namespace ArianJahandarfardsAddIn
             btnContinue.Enabled = false;
             btnCancel.Enabled = false;
 
-            // Show shimmer and wait message
+            // Show shimmer and progress state before handing off to the installer.
             shimmer.Visible = true;
             shimmer.StartAnimation();
-            lblStatus.Text = "Waiting for Microsoft Project to close...";
-
-            // Wait for WINPROJ to fully exit
-            await Task.Run(() =>
-            {
-                while (Process.GetProcessesByName("WINPROJ").Length > 0)
-                    Thread.Sleep(1000);
-            });
-
-            await Task.Delay(1500); // buffer after process gone
+            lblStatus.Text = "Closing Microsoft Project and preparing the update...";
+            await Task.Delay(200);
 
             // Launch AJSetup
             try
@@ -266,7 +257,9 @@ namespace ArianJahandarfardsAddIn
                     Verb = "runas"
                 });
 
-                LaunchConfirmed = true;  // ← only set here, on success
+                // AJSetup already waits for WINPROJ to exit, so close the form
+                // immediately and let AJUpdater trigger Application.Quit().
+                LaunchConfirmed = true;
                 Close();
             }
             catch (Exception ex)

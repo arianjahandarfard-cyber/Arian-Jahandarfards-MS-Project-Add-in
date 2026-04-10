@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
@@ -23,39 +24,40 @@ namespace ArianJahandarfardsAddIn
                     System.Net.SecurityProtocolType.Tls12;
 
                 string json = await _http.GetStringAsync(VERSION_CHECK_URL);
+
                 var remote = JsonConvert.DeserializeObject<VersionManifest>(json);
                 Version current = Assembly.GetExecutingAssembly().GetName().Version;
                 Version remoteV = new Version(remote.Version);
+                bool updateAvailable = remoteV > current;
 
-                if (remoteV > current)
+                // Silent checks should never show UI inside the Project process.
+                if (silent)
+                    return;
+
+                if (!updateAvailable)
                 {
-                    // Show branded update prompt — it handles everything from here
-                    var prompt = new AJUpdatePrompt(
-                        updateAvailable: true,
-                        currentVersion: current.ToString(),
-                        newVersion: remote.Version,
-                        msiUrl: remote.MsiUrl,
-                        updateVersionStr: remote.Version);
-
-                    // Quit MS Project AFTER user clicks Continue and form closes
-                    prompt.FormClosed += (s, e) =>
-                    {
-                        if (prompt.LaunchConfirmed)
-                            Globals.ThisAddIn.Application.Quit();
-                    };
-
-                    prompt.Show();
+                    MessageBox.Show(
+                        $"You're on the latest version (v{current}).",
+                        "AJ Tools",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
                 }
-                else
-                {
-                    if (!silent)
-                    {
-                        var prompt = new AJUpdatePrompt(
-                            updateAvailable: false,
-                            currentVersion: current.ToString());
-                        prompt.Show();
-                    }
-                }
+
+                var result = MessageBox.Show(
+                    "A new version of AJ Tools is available." + Environment.NewLine + Environment.NewLine +
+                    $"Current Version: v{current}" + Environment.NewLine +
+                    $"New Version: v{remote.Version}" + Environment.NewLine + Environment.NewLine +
+                    "Microsoft Project will close so the update can begin. Continue?",
+                    "AJ Tools Update Available",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (result != DialogResult.Yes)
+                    return;
+
+                LaunchSetup(remote.MsiUrl, remote.Version);
+                Globals.ThisAddIn.Application.Quit();
             }
             catch (Exception ex)
             {
@@ -65,6 +67,25 @@ namespace ArianJahandarfardsAddIn
                         "Update Check Failed",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
+            }
+        }
+
+        private static void LaunchSetup(string msiUrl, string newVersion)
+        {
+            string setupExe = @"C:\Program Files (x86)\AJTools\AJSetup.exe";
+            if (!File.Exists(setupExe))
+                throw new FileNotFoundException($"AJSetup.exe not found at: {setupExe}");
+
+            using (var process = new Process())
+            {
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = setupExe,
+                    Arguments = $"/url \"{msiUrl}\" /version \"{newVersion}\"",
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+                process.Start();
             }
         }
 

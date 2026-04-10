@@ -61,7 +61,7 @@ namespace AJSetup
         private void BuildUI()
         {
             this.Text = "Arian Jahandarfard's Tools";
-            this.Size = new Size(540, 420);
+            this.Size = new Size(540, 450);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -287,7 +287,10 @@ namespace AJSetup
 
                 // Fall back to MSI next to EXE
                 if (msiPath == null)
+                {
                     msiPath = Path.Combine(ExeDir, "AJAddIn.msi");
+                    EnsureLocalMsiIsFresh(msiPath);
+                }
 
                 if (!File.Exists(msiPath))
                     throw new Exception($"AJAddIn.msi not found.\nLooked in: {msiPath}");
@@ -306,6 +309,8 @@ namespace AJSetup
                 // Step 2: Clean VSTO metadata
                 SetStatus("Cleaning previous installation...");
                 await Task.Run(() => CleanVstoSolutionMetadata());
+                await Task.Run(() => CleanCurrentUserProjectAddInRegistration());
+                await Task.Run(() => CleanCurrentUserUninstallEntries());
                 await Task.Run(() => CleanAssemblyCache());
                 await Task.Delay(500);
 
@@ -367,6 +372,101 @@ namespace AJSetup
                 }
             }
             catch { }
+
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\VSTO\Security\Inclusion", true))
+                {
+                    if (key == null) return;
+                    foreach (var n in key.GetSubKeyNames())
+                        try { key.DeleteSubKeyTree(n); } catch { }
+                }
+            }
+            catch { }
+        }
+
+        private void CleanCurrentUserProjectAddInRegistration()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Office\MS Project\Addins", true))
+                {
+                    if (key == null) return;
+
+                    foreach (var n in key.GetSubKeyNames())
+                    {
+                        if (n.IndexOf("ArianJahandarfardsAddIn", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            n.IndexOf("Arian Jahandarfards MS Project Add-in", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            try { key.DeleteSubKeyTree(n); } catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void CleanCurrentUserUninstallEntries()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", true))
+                {
+                    if (key == null) return;
+
+                    foreach (var n in key.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using (var subKey = key.OpenSubKey(n))
+                            {
+                                string displayName = subKey?.GetValue("DisplayName") as string;
+                                if (string.IsNullOrWhiteSpace(displayName))
+                                    continue;
+
+                                if (displayName.IndexOf("Arian Jahandarfards MS Project Add-in", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    displayName.IndexOf("AJ Tools", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    key.DeleteSubKeyTree(n);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void EnsureLocalMsiIsFresh(string msiPath)
+        {
+            try
+            {
+                if (_downloadUrl != null || _silentMsiPath != null)
+                    return;
+
+                string setupExePath = Assembly.GetExecutingAssembly().Location;
+                if (!File.Exists(msiPath) || !File.Exists(setupExePath))
+                    return;
+
+                DateTime msiTime = File.GetLastWriteTimeUtc(msiPath);
+                DateTime setupTime = File.GetLastWriteTimeUtc(setupExePath);
+
+                // Local dev runs of AJSetup.exe install the MSI beside the EXE.
+                // If the bootstrapper was just rebuilt but the MSI was not,
+                // you'll reinstall an older add-in binary and never see code changes.
+                if (msiTime < setupTime.AddMinutes(-1))
+                {
+                    throw new Exception(
+                        "The local AJAddIn.msi next to AJSetup.exe is older than the installer itself." +
+                        "\n\nAJSetup.exe installs the adjacent MSI, so your latest add-in code changes are not included yet." +
+                        "\n\nBuild a fresh local MSI first with scripts\\Build-LocalInstaller.ps1, or copy a newly built AJAddIn.msi into this folder before running AJSetup.exe.");
+                }
+            }
+            catch (Exception)
+            {
+                throw;
+            }
         }
 
         private void CleanAssemblyCache()

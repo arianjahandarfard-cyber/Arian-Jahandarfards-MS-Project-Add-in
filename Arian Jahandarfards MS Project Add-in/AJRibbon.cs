@@ -1,6 +1,6 @@
-﻿using ArianJahandarfardsAddIn;
-using Microsoft.Office.Tools.Ribbon;
 using System.Threading.Tasks;
+using ArianJahandarfardsAddIn;
+using Microsoft.Office.Tools.Ribbon;
 
 namespace Arian_Jahandarfards_MS_Project_Add_in
 {
@@ -39,9 +39,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             frm.ShowDialog();
         }
 
-        private async void btnCheckUpdates_Click(object sender, RibbonControlEventArgs e)
-        {
+        private async void btnCheckUpdates_Click(object sender, RibbonControlEventArgs e) =>
             await AJUpdater.CheckForUpdatesAsync(silent: false);
-        }
     }
 }

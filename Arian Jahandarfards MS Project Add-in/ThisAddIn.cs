@@ -1,5 +1,5 @@
-﻿using System;
-using System.Threading.Tasks;
+using System;
+using System.Windows.Forms;
 using ArianJahandarfardsAddIn;
 using MSProject = Microsoft.Office.Interop.MSProject;
 
@@ -8,17 +8,37 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
     public partial class ThisAddIn
     {
         internal AJMilestoneTracker _tracker;
+        private Timer _startupUpdateTimer;
 
         private void ThisAddIn_Startup(object sender, EventArgs e)
         {
             _tracker = new AJMilestoneTracker(this.Application);
 
-            // Silent update check on startup — only pops up if update is available
-            _ = Task.Run(() => AJUpdater.CheckForUpdatesAsync(silent: true));
+            _startupUpdateTimer = new Timer { Interval = 3000 };
+            _startupUpdateTimer.Tick += async (s, args) =>
+            {
+                _startupUpdateTimer.Stop();
+                try
+                {
+                    await AJUpdater.CheckForUpdatesAsync(silent: true);
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    _startupUpdateTimer.Dispose();
+                    _startupUpdateTimer = null;
+                }
+            };
+            _startupUpdateTimer.Start();
         }
 
         private void ThisAddIn_Shutdown(object sender, EventArgs e)
         {
+            _startupUpdateTimer?.Stop();
+            _startupUpdateTimer?.Dispose();
+            _startupUpdateTimer = null;
             _tracker?.Dispose();
         }
 

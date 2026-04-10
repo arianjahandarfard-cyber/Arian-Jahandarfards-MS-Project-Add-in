@@ -144,6 +144,9 @@
     <Compile Include="AJSettings.Designer.cs">
       <DependentUpon>AJSettings.cs</DependentUpon>
     </Compile>
+    <Compile Include="AJUpdatePrompt.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="AJUpdater.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>

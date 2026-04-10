@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Reflection;
 using Microsoft.Win32;
 
@@ -14,13 +15,11 @@ namespace AJSetup
 {
     public partial class Form1 : Form
     {
-        // Brand colors
         private readonly Color NavyDark = Color.FromArgb(0, 13, 31);
         private readonly Color NavyMid = Color.FromArgb(1, 44, 100);
         private readonly Color BlueAccent = Color.FromArgb(0, 146, 231);
         private readonly Color White = Color.White;
         private readonly Color LightGray = Color.FromArgb(245, 245, 245);
-        private readonly Color MidGray = Color.FromArgb(180, 180, 180);
         private readonly Color TextGray = Color.FromArgb(100, 100, 100);
 
         private PictureBox picLogo;
@@ -32,13 +31,15 @@ namespace AJSetup
         private AJProgressBar progressBar;
         private Panel panelTop;
         private Panel panelBottom;
-        private Panel panelAccent;
-        private Panel panelBody;
 
         private string _silentMsiPath = null;
         private string _downloadUrl = null;
         private bool _isUpdateMode = false;
         private string _updateVersion = null;
+
+        // Store EXE directory at startup before elevation changes working dir
+        private static readonly string ExeDir =
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
         public Form1(string silentMsiPath = null, string downloadUrl = null, string updateVersion = null)
         {
@@ -70,78 +71,68 @@ namespace AJSetup
             // Top dark navy panel
             panelTop = new Panel();
             panelTop.BackColor = NavyDark;
-            panelTop.Size = new Size(540, 145);
+            panelTop.Size = new Size(540, 150);
             panelTop.Location = new Point(0, 0);
             this.Controls.Add(panelTop);
 
-            // Logo card — white rounded area on dark background
-            Panel logoCard = new Panel();
-            logoCard.BackColor = White;
-            logoCard.Size = new Size(220, 80);
-            logoCard.Location = new Point(20, 28);
-            panelTop.Controls.Add(logoCard);
-
+            // Logo — transparent background on dark panel
             picLogo = new PictureBox();
-            picLogo.Size = new Size(210, 72);
-            picLogo.Location = new Point(5, 4);
+            picLogo.Size = new Size(230, 90);
+            picLogo.Location = new Point(20, 25);
             picLogo.SizeMode = PictureBoxSizeMode.Zoom;
-            picLogo.BackColor = White;
+            picLogo.BackColor = Color.Transparent;
             try
             {
-                string logoPath = Path.Combine(
-                    Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),
-                    "AJ Logo Final Files-02.png");
-                picLogo.Image = Image.FromFile(logoPath);
+                string logoPath = Path.Combine(ExeDir, "AJ Logo Final Files-02.png");
+                if (File.Exists(logoPath))
+                {
+                    var original = Image.FromFile(logoPath);
+                    picLogo.Image = MakeTransparent(original, Color.White);
+                }
             }
             catch { }
-            logoCard.Controls.Add(picLogo);
+            panelTop.Controls.Add(picLogo);
 
-            // Version label on top panel
+            // Tagline
+            Label lblTagline = new Label();
+            lblTagline.Text = _isUpdateMode ? "Installing Update..." : "MS Project Add-in";
+            lblTagline.ForeColor = Color.FromArgb(160, 190, 220);
+            lblTagline.Font = new Font("Segoe UI", 9f);
+            lblTagline.AutoSize = true;
+            lblTagline.Location = new Point(265, 55);
+            panelTop.Controls.Add(lblTagline);
+
+            // Version label
             Label lblVersion = new Label();
-            lblVersion.Text = _updateVersion != null
-                ? $"v{_updateVersion}"
-                : $"v{Assembly.GetExecutingAssembly().GetName().Version}";
+            lblVersion.Text = _updateVersion != null ? $"v{_updateVersion}" : $"v{Assembly.GetExecutingAssembly().GetName().Version}";
             lblVersion.ForeColor = BlueAccent;
             lblVersion.Font = new Font("Segoe UI", 8.5f);
             lblVersion.AutoSize = true;
-            lblVersion.Location = new Point(22, 116);
+            lblVersion.Location = new Point(22, 122);
             panelTop.Controls.Add(lblVersion);
 
-            // Tagline on top panel
-            Label lblTagline = new Label();
-            lblTagline.Text = _isUpdateMode ? "Installing Update..." : "MS Project Add-in";
-            lblTagline.ForeColor = Color.FromArgb(180, 200, 220);
-            lblTagline.Font = new Font("Segoe UI", 9f);
-            lblTagline.AutoSize = true;
-            lblTagline.Location = new Point(260, 55);
-            panelTop.Controls.Add(lblTagline);
-
             // Blue accent line
-            panelAccent = new Panel();
-            panelAccent.BackColor = BlueAccent;
-            panelAccent.Size = new Size(540, 3);
-            panelAccent.Location = new Point(0, 145);
-            this.Controls.Add(panelAccent);
+            Panel accentLine = new Panel();
+            accentLine.BackColor = BlueAccent;
+            accentLine.Size = new Size(540, 3);
+            accentLine.Location = new Point(0, 150);
+            this.Controls.Add(accentLine);
 
-            // Body panel
-            panelBody = new Panel();
+            // Body
+            Panel panelBody = new Panel();
             panelBody.BackColor = White;
-            panelBody.Size = new Size(540, 215);
-            panelBody.Location = new Point(0, 148);
+            panelBody.Size = new Size(540, 195);
+            panelBody.Location = new Point(0, 153);
             this.Controls.Add(panelBody);
 
-            // Title
             lblTitle = new Label();
-            lblTitle.Text = _isUpdateMode
-                ? "Updating Arian Jahandarfard's Tools"
-                : "Arian Jahandarfard's Tools";
+            lblTitle.Text = _isUpdateMode ? "Updating Arian Jahandarfard's Tools" : "Arian Jahandarfard's Tools";
             lblTitle.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
             lblTitle.ForeColor = NavyDark;
             lblTitle.AutoSize = true;
             lblTitle.Location = new Point(20, 18);
             panelBody.Controls.Add(lblTitle);
 
-            // Subtitle
             lblSubtitle = new Label();
             lblSubtitle.Text = _isUpdateMode
                 ? "Please wait while the update is downloaded and installed."
@@ -152,50 +143,45 @@ namespace AJSetup
             lblSubtitle.Location = new Point(20, 50);
             panelBody.Controls.Add(lblSubtitle);
 
-            // Divider line in body
             Panel bodyDivider = new Panel();
             bodyDivider.BackColor = Color.FromArgb(230, 230, 230);
             bodyDivider.Size = new Size(494, 1);
-            bodyDivider.Location = new Point(20, 100);
+            bodyDivider.Location = new Point(20, 102);
             panelBody.Controls.Add(bodyDivider);
 
-            // Progress bar
             progressBar = new AJProgressBar();
             progressBar.Size = new Size(494, 12);
-            progressBar.Location = new Point(20, 115);
+            progressBar.Location = new Point(20, 118);
             progressBar.Visible = false;
             progressBar.NavyColor = NavyMid;
             progressBar.AccentColor = BlueAccent;
             panelBody.Controls.Add(progressBar);
 
-            // Status label
             lblStatus = new Label();
             lblStatus.Text = "";
             lblStatus.Font = new Font("Segoe UI", 8.5f);
             lblStatus.ForeColor = TextGray;
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(20, 135);
+            lblStatus.Location = new Point(20, 138);
             panelBody.Controls.Add(lblStatus);
 
             // Bottom panel
             panelBottom = new Panel();
             panelBottom.BackColor = LightGray;
-            panelBottom.Size = new Size(540, 55);
-            panelBottom.Location = new Point(0, 363);
+            panelBottom.Size = new Size(540, 60);
+            panelBottom.Location = new Point(0, 350);
             this.Controls.Add(panelBottom);
 
-            // Thin top border on bottom panel
             Panel bottomBorder = new Panel();
-            bottomBorder.BackColor = Color.FromArgb(220, 220, 220);
+            bottomBorder.BackColor = Color.FromArgb(215, 215, 215);
             bottomBorder.Size = new Size(540, 1);
             bottomBorder.Location = new Point(0, 0);
             panelBottom.Controls.Add(bottomBorder);
 
-            // Install button
             btnInstall = new Button();
             btnInstall.Text = "Install";
-            btnInstall.Size = new Size(110, 34);
-            btnInstall.Location = new Point(408, 10);
+            btnInstall.Size = new Size(110, 36);
+            btnInstall.Location = new Point(408, 12);
             btnInstall.BackColor = BlueAccent;
             btnInstall.ForeColor = White;
             btnInstall.FlatStyle = FlatStyle.Flat;
@@ -206,11 +192,10 @@ namespace AJSetup
             btnInstall.Click += BtnInstall_Click;
             panelBottom.Controls.Add(btnInstall);
 
-            // Cancel/Close button
             btnClose = new Button();
             btnClose.Text = "Cancel";
-            btnClose.Size = new Size(85, 34);
-            btnClose.Location = new Point(313, 10);
+            btnClose.Size = new Size(85, 36);
+            btnClose.Location = new Point(313, 12);
             btnClose.BackColor = LightGray;
             btnClose.ForeColor = NavyMid;
             btnClose.FlatStyle = FlatStyle.Flat;
@@ -222,12 +207,18 @@ namespace AJSetup
             panelBottom.Controls.Add(btnClose);
         }
 
+        // Make white background transparent
+        private Image MakeTransparent(Image original, Color bgColor)
+        {
+            var bmp = new Bitmap(original);
+            bmp.MakeTransparent(bgColor);
+            return bmp;
+        }
+
         private void SetStatus(string text)
         {
-            if (InvokeRequired)
-                Invoke(new Action(() => { lblStatus.Text = text; }));
-            else
-                lblStatus.Text = text;
+            if (InvokeRequired) Invoke(new Action(() => lblStatus.Text = text));
+            else lblStatus.Text = text;
         }
 
         private void ShowSuccess(string message)
@@ -265,31 +256,43 @@ namespace AJSetup
 
             try
             {
-                // Check if MS Project is running
+                // Wait for MS Project to close
                 if (Process.GetProcessesByName("WINPROJ").Length > 0)
-                    throw new Exception("Microsoft Project is currently open.\nPlease close MS Project and try again.");
+                {
+                    SetStatus("Waiting for Microsoft Project to close before update can begin...");
+                    await Task.Run(() =>
+                    {
+                        while (Process.GetProcessesByName("WINPROJ").Length > 0)
+                            Thread.Sleep(2000);
+                    });
+                    SetStatus("");
+                    await Task.Delay(1000);
+                }
 
                 string msiPath = _silentMsiPath;
 
-                // If we have a download URL, download the MSI first
+                // Download if URL provided
                 if (msiPath == null && _downloadUrl != null)
                 {
                     SetStatus("Downloading update...");
                     string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
                     Directory.CreateDirectory(tempDir);
                     msiPath = Path.Combine(tempDir, "AJAddIn.msi");
-
                     using (var http = new HttpClient())
                     {
-                        byte[] msiBytes = await http.GetByteArrayAsync(_downloadUrl);
-                        File.WriteAllBytes(msiPath, msiBytes);
+                        byte[] bytes = await http.GetByteArrayAsync(_downloadUrl);
+                        File.WriteAllBytes(msiPath, bytes);
                     }
                 }
 
-                if (msiPath == null || !File.Exists(msiPath))
-                    throw new Exception($"AJAddIn.msi not found.\nExpected: {msiPath}");
+                // Fall back to MSI next to EXE
+                if (msiPath == null)
+                    msiPath = Path.Combine(ExeDir, "AJAddIn.msi");
 
-                // Step 1: Uninstall existing
+                if (!File.Exists(msiPath))
+                    throw new Exception($"AJAddIn.msi not found.\nLooked in: {msiPath}");
+
+                // Step 1: Uninstall
                 SetStatus("Removing previous version...");
                 var uninstall = new Process();
                 uninstall.StartInfo.FileName = "msiexec";
@@ -300,15 +303,13 @@ namespace AJSetup
                 await Task.Run(() => uninstall.WaitForExit());
                 await Task.Delay(1000);
 
-                // Step 2: Clean VSTO SolutionMetadata
+                // Step 2: Clean VSTO metadata
                 SetStatus("Cleaning previous installation...");
                 await Task.Run(() => CleanVstoSolutionMetadata());
-
-                // Step 3: Clean assembly cache
                 await Task.Run(() => CleanAssemblyCache());
                 await Task.Delay(500);
 
-                // Step 4: Install new MSI
+                // Step 3: Install
                 SetStatus("Installing Arian Jahandarfard's Tools...");
                 var install = new Process();
                 install.StartInfo.FileName = "msiexec";
@@ -319,10 +320,10 @@ namespace AJSetup
                 await Task.Run(() => install.WaitForExit());
                 await Task.Delay(1000);
 
-                // Step 5: Verify files
+                // Step 4: Verify
                 SetStatus("Verifying installation...");
                 string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
-                bool filesExist = await Task.Run(() =>
+                bool ok = await Task.Run(() =>
                 {
                     for (int i = 0; i < 15; i++)
                     {
@@ -331,21 +332,18 @@ namespace AJSetup
                     }
                     return false;
                 });
+                if (!ok) throw new Exception("Files did not install correctly.");
 
-                if (!filesExist)
-                    throw new Exception("Files did not install correctly.");
-
-                // Step 6: Register VSTO
+                // Step 5: Register VSTO
                 SetStatus("Registering with Microsoft Project...");
                 string vstoInstaller = GetVstoInstallerPath();
-                var vstoProcess = new Process();
-                vstoProcess.StartInfo.FileName = vstoInstaller;
-                vstoProcess.StartInfo.Arguments = $"/i \"{vstoTarget}\"";
-                vstoProcess.StartInfo.UseShellExecute = true;
-                vstoProcess.Start();
-                await Task.Run(() => vstoProcess.WaitForExit());
+                var vsto = new Process();
+                vsto.StartInfo.FileName = vstoInstaller;
+                vsto.StartInfo.Arguments = $"/i \"{vstoTarget}\"";
+                vsto.StartInfo.UseShellExecute = true;
+                vsto.Start();
+                await Task.Run(() => vsto.WaitForExit());
 
-                // Step 7: Success
                 string successMsg = _isUpdateMode
                     ? $"Successfully Updated{(_updateVersion != null ? " to v" + _updateVersion : "")}!"
                     : "Successfully Installed!";
@@ -361,12 +359,11 @@ namespace AJSetup
         {
             try
             {
-                using (var key = Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\VSTO\SolutionMetadata", true))
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\VSTO\SolutionMetadata", true))
                 {
                     if (key == null) return;
-                    foreach (var name in key.GetSubKeyNames())
-                        try { key.DeleteSubKeyTree(name); } catch { }
+                    foreach (var n in key.GetSubKeyNames())
+                        try { key.DeleteSubKeyTree(n); } catch { }
                 }
             }
             catch { }
@@ -403,7 +400,6 @@ namespace AJSetup
         }
     }
 
-    // Custom animated progress bar
     public class AJProgressBar : Control
     {
         public Color NavyColor { get; set; } = Color.FromArgb(1, 44, 100);
@@ -429,12 +425,8 @@ namespace AJSetup
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // Background track
             using (var brush = new SolidBrush(Color.FromArgb(220, 220, 220)))
                 g.FillRectangle(brush, 0, 0, Width, Height);
-
-            // Animated shimmer fill
             using (var brush = new LinearGradientBrush(
                 new Rectangle(-60 + (int)_offset, 0, Width + 120, Height),
                 NavyColor, AccentColor, LinearGradientMode.Horizontal))

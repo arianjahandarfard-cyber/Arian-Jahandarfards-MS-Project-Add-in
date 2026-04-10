@@ -28,70 +28,66 @@ namespace ArianJahandarfardsAddIn
                 if (remoteVersion > currentVersion)
                 {
                     var result = MessageBox.Show(
-                        $"A new version of AJ Tools is available!\n\nCurrent: {currentVersion}\nNew:     {remoteVersion}\n\nRelease Notes:\n{remote.ReleaseNotes}\n\nDownload and install now?",
-                        "AJ Tools — Update Available",
+                        $"A new version of Arian Jahandarfard's Tools is available!\n\nCurrent: {currentVersion}\nNew:     {remoteVersion}\n\nRelease Notes:\n{remote.ReleaseNotes}\n\nWould you like to update now?",
+                        "Update Available",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Information);
 
                     if (result == DialogResult.Yes)
-                        await DownloadAndInstall(remote);
+                        LaunchUpdater(remote);
                 }
                 else
                 {
                     if (!silent)
-                        MessageBox.Show($"You're up to date! (v{currentVersion})", "AJ Tools — No Updates",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show($"You're up to date! (v{currentVersion})",
+                            "No Updates Available",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)
             {
                 if (!silent)
-                    MessageBox.Show($"Could not check for updates:\n{ex.Message}", "AJ Tools — Update Check Failed",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show($"Could not check for updates:\n{ex.Message}",
+                        "Update Check Failed",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
             }
         }
 
-        private static async Task DownloadAndInstall(VersionManifest remote)
+        private static void LaunchUpdater(VersionManifest remote)
         {
             try
             {
-                // Download MSI to temp folder
-                string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
-                Directory.CreateDirectory(tempDir);
-                string msiPath = Path.Combine(tempDir, "AJAddIn.msi");
-
-                // Show downloading message
-                MessageBox.Show(
-                    "Downloading update. The installer will open automatically when ready.\n\nPlease close Microsoft Project when prompted.",
-                    "AJ Tools — Downloading",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-
-                byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
-                File.WriteAllBytes(msiPath, msiBytes);
-
-                // Find AJSetup.exe in the fixed install location
                 string setupExe = @"C:\Program Files (x86)\AJTools\AJSetup.exe";
 
                 if (!File.Exists(setupExe))
-                    throw new Exception($"AJSetup.exe not found at:\n{setupExe}\n\nPlease reinstall AJ Tools.");
+                    throw new Exception($"AJSetup.exe not found at:\n{setupExe}\n\nPlease reinstall Arian Jahandarfard's Tools.");
 
-                // Launch AJSetup in update mode — it handles everything
+                MessageBox.Show(
+                    "Please save your work and close Microsoft Project to continue with the update.\n\nThe installer will open automatically once Project is closed.",
+                    "Please Close Microsoft Project",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                // Launch AJSetup with the download URL — it handles everything
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = setupExe,
-                    Arguments = $"/update \"{msiPath}\" /version \"{remote.Version}\"",
+                    Arguments = $"/url \"{remote.MsiUrl}\" /version \"{remote.Version}\"",
                     UseShellExecute = true,
                     Verb = "runas"
                 });
 
-                // Quit MS Project so the MSI can replace the DLL
+                // Close MS Project
                 Globals.ThisAddIn.Application.Quit();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Update failed:\n{ex.Message}", "AJ Tools — Update Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Update failed:\n{ex.Message}",
+                    "Update Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 

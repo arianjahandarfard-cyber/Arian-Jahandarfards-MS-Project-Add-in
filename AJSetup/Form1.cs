@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Reflection;
 using Microsoft.Win32;
 
@@ -12,26 +14,38 @@ namespace AJSetup
 {
     public partial class Form1 : Form
     {
+        // Brand colors
+        private readonly Color NavyDark = Color.FromArgb(0, 13, 31);
+        private readonly Color NavyMid = Color.FromArgb(1, 44, 100);
+        private readonly Color BlueAccent = Color.FromArgb(0, 146, 231);
+        private readonly Color White = Color.White;
+        private readonly Color LightGray = Color.FromArgb(245, 245, 245);
+        private readonly Color MidGray = Color.FromArgb(180, 180, 180);
+        private readonly Color TextGray = Color.FromArgb(100, 100, 100);
+
         private PictureBox picLogo;
         private Label lblTitle;
         private Label lblSubtitle;
         private Label lblStatus;
         private Button btnInstall;
         private Button btnClose;
-        private ProgressBar progressBar;
+        private AJProgressBar progressBar;
         private Panel panelTop;
         private Panel panelBottom;
-        private Panel divider;
+        private Panel panelAccent;
+        private Panel panelBody;
 
         private string _silentMsiPath = null;
+        private string _downloadUrl = null;
         private bool _isUpdateMode = false;
         private string _updateVersion = null;
 
-        public Form1(string silentMsiPath = null, string updateVersion = null)
+        public Form1(string silentMsiPath = null, string downloadUrl = null, string updateVersion = null)
         {
             InitializeComponent();
             _silentMsiPath = silentMsiPath;
-            _isUpdateMode = silentMsiPath != null;
+            _downloadUrl = downloadUrl;
+            _isUpdateMode = silentMsiPath != null || downloadUrl != null;
             _updateVersion = updateVersion;
             BuildUI();
         }
@@ -45,33 +59,33 @@ namespace AJSetup
 
         private void BuildUI()
         {
-            this.Text = _isUpdateMode ? "AJ Tools — Updating" : "AJ Tools Installer";
+            this.Text = "Arian Jahandarfard's Tools";
             this.Size = new Size(540, 420);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
-            this.BackColor = Color.White;
+            this.MinimizeBox = true;
+            this.BackColor = White;
 
-            // Top panel
+            // Top dark navy panel
             panelTop = new Panel();
-            panelTop.BackColor = Color.White;
-            panelTop.Dock = DockStyle.Top;
-            panelTop.Height = 130;
+            panelTop.BackColor = NavyDark;
+            panelTop.Size = new Size(540, 145);
+            panelTop.Location = new Point(0, 0);
             this.Controls.Add(panelTop);
 
-            // Accent bar
-            Panel accentBar = new Panel();
-            accentBar.BackColor = Color.FromArgb(1, 44, 100);
-            accentBar.Dock = DockStyle.Top;
-            accentBar.Height = 6;
-            panelTop.Controls.Add(accentBar);
+            // Logo card — white rounded area on dark background
+            Panel logoCard = new Panel();
+            logoCard.BackColor = White;
+            logoCard.Size = new Size(220, 80);
+            logoCard.Location = new Point(20, 28);
+            panelTop.Controls.Add(logoCard);
 
-            // Logo
             picLogo = new PictureBox();
-            picLogo.Size = new Size(280, 95);
-            picLogo.Location = new Point(20, 18);
+            picLogo.Size = new Size(210, 72);
+            picLogo.Location = new Point(5, 4);
             picLogo.SizeMode = PictureBoxSizeMode.Zoom;
-            picLogo.BackColor = Color.White;
+            picLogo.BackColor = White;
             try
             {
                 string logoPath = Path.Combine(
@@ -80,70 +94,113 @@ namespace AJSetup
                 picLogo.Image = Image.FromFile(logoPath);
             }
             catch { }
-            panelTop.Controls.Add(picLogo);
+            logoCard.Controls.Add(picLogo);
 
-            // Divider
-            divider = new Panel();
-            divider.BackColor = Color.FromArgb(220, 220, 220);
-            divider.Size = new Size(540, 1);
-            divider.Location = new Point(0, 129);
-            this.Controls.Add(divider);
+            // Version label on top panel
+            Label lblVersion = new Label();
+            lblVersion.Text = _updateVersion != null
+                ? $"v{_updateVersion}"
+                : $"v{Assembly.GetExecutingAssembly().GetName().Version}";
+            lblVersion.ForeColor = BlueAccent;
+            lblVersion.Font = new Font("Segoe UI", 8.5f);
+            lblVersion.AutoSize = true;
+            lblVersion.Location = new Point(22, 116);
+            panelTop.Controls.Add(lblVersion);
+
+            // Tagline on top panel
+            Label lblTagline = new Label();
+            lblTagline.Text = _isUpdateMode ? "Installing Update..." : "MS Project Add-in";
+            lblTagline.ForeColor = Color.FromArgb(180, 200, 220);
+            lblTagline.Font = new Font("Segoe UI", 9f);
+            lblTagline.AutoSize = true;
+            lblTagline.Location = new Point(260, 55);
+            panelTop.Controls.Add(lblTagline);
+
+            // Blue accent line
+            panelAccent = new Panel();
+            panelAccent.BackColor = BlueAccent;
+            panelAccent.Size = new Size(540, 3);
+            panelAccent.Location = new Point(0, 145);
+            this.Controls.Add(panelAccent);
+
+            // Body panel
+            panelBody = new Panel();
+            panelBody.BackColor = White;
+            panelBody.Size = new Size(540, 215);
+            panelBody.Location = new Point(0, 148);
+            this.Controls.Add(panelBody);
 
             // Title
             lblTitle = new Label();
-            lblTitle.Text = _isUpdateMode ? "AJ Tools — Updating" : "AJ Tools for MS Project";
-            lblTitle.Font = new Font("Segoe UI", 15f, FontStyle.Bold);
-            lblTitle.ForeColor = Color.FromArgb(1, 44, 100);
+            lblTitle.Text = _isUpdateMode
+                ? "Updating Arian Jahandarfard's Tools"
+                : "Arian Jahandarfard's Tools";
+            lblTitle.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
+            lblTitle.ForeColor = NavyDark;
             lblTitle.AutoSize = true;
-            lblTitle.Location = new Point(20, 145);
-            this.Controls.Add(lblTitle);
+            lblTitle.Location = new Point(20, 18);
+            panelBody.Controls.Add(lblTitle);
 
             // Subtitle
             lblSubtitle = new Label();
             lblSubtitle.Text = _isUpdateMode
-                ? $"Installing update{(_updateVersion != null ? " v" + _updateVersion : "")}..."
+                ? "Please wait while the update is downloaded and installed."
                 : "Developed by Arian Jahandarfard\r\nThis installer will set up AJ Tools in Microsoft Project.";
             lblSubtitle.Font = new Font("Segoe UI", 9f);
-            lblSubtitle.ForeColor = Color.Gray;
-            lblSubtitle.AutoSize = true;
-            lblSubtitle.Location = new Point(22, 182);
-            this.Controls.Add(lblSubtitle);
+            lblSubtitle.ForeColor = TextGray;
+            lblSubtitle.Size = new Size(494, 40);
+            lblSubtitle.Location = new Point(20, 50);
+            panelBody.Controls.Add(lblSubtitle);
+
+            // Divider line in body
+            Panel bodyDivider = new Panel();
+            bodyDivider.BackColor = Color.FromArgb(230, 230, 230);
+            bodyDivider.Size = new Size(494, 1);
+            bodyDivider.Location = new Point(20, 100);
+            panelBody.Controls.Add(bodyDivider);
 
             // Progress bar
-            progressBar = new ProgressBar();
-            progressBar.Size = new Size(494, 18);
-            progressBar.Location = new Point(22, 265);
+            progressBar = new AJProgressBar();
+            progressBar.Size = new Size(494, 12);
+            progressBar.Location = new Point(20, 115);
             progressBar.Visible = false;
-            progressBar.Style = ProgressBarStyle.Marquee;
-            progressBar.MarqueeAnimationSpeed = 30;
-            this.Controls.Add(progressBar);
+            progressBar.NavyColor = NavyMid;
+            progressBar.AccentColor = BlueAccent;
+            panelBody.Controls.Add(progressBar);
 
             // Status label
             lblStatus = new Label();
             lblStatus.Text = "";
-            lblStatus.Font = new Font("Segoe UI", 9f);
-            lblStatus.ForeColor = Color.Gray;
+            lblStatus.Font = new Font("Segoe UI", 8.5f);
+            lblStatus.ForeColor = TextGray;
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(22, 290);
-            this.Controls.Add(lblStatus);
+            lblStatus.Location = new Point(20, 135);
+            panelBody.Controls.Add(lblStatus);
 
             // Bottom panel
             panelBottom = new Panel();
-            panelBottom.BackColor = Color.FromArgb(240, 240, 240);
-            panelBottom.Dock = DockStyle.Bottom;
-            panelBottom.Height = 55;
+            panelBottom.BackColor = LightGray;
+            panelBottom.Size = new Size(540, 55);
+            panelBottom.Location = new Point(0, 363);
             this.Controls.Add(panelBottom);
+
+            // Thin top border on bottom panel
+            Panel bottomBorder = new Panel();
+            bottomBorder.BackColor = Color.FromArgb(220, 220, 220);
+            bottomBorder.Size = new Size(540, 1);
+            bottomBorder.Location = new Point(0, 0);
+            panelBottom.Controls.Add(bottomBorder);
 
             // Install button
             btnInstall = new Button();
-            btnInstall.Text = _isUpdateMode ? "Updating..." : "Install";
+            btnInstall.Text = "Install";
             btnInstall.Size = new Size(110, 34);
             btnInstall.Location = new Point(408, 10);
-            btnInstall.BackColor = Color.FromArgb(1, 44, 100);
-            btnInstall.ForeColor = Color.White;
+            btnInstall.BackColor = BlueAccent;
+            btnInstall.ForeColor = White;
             btnInstall.FlatStyle = FlatStyle.Flat;
             btnInstall.FlatAppearance.BorderSize = 0;
-            btnInstall.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
+            btnInstall.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
             btnInstall.Cursor = Cursors.Hand;
             btnInstall.Visible = !_isUpdateMode;
             btnInstall.Click += BtnInstall_Click;
@@ -152,13 +209,14 @@ namespace AJSetup
             // Cancel/Close button
             btnClose = new Button();
             btnClose.Text = "Cancel";
-            btnClose.Size = new Size(80, 34);
-            btnClose.Location = new Point(318, 10);
-            btnClose.BackColor = Color.FromArgb(240, 240, 240);
-            btnClose.ForeColor = Color.FromArgb(1, 44, 100);
+            btnClose.Size = new Size(85, 34);
+            btnClose.Location = new Point(313, 10);
+            btnClose.BackColor = LightGray;
+            btnClose.ForeColor = NavyMid;
             btnClose.FlatStyle = FlatStyle.Flat;
-            btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.Font = new Font("Segoe UI", 10f);
+            btnClose.FlatAppearance.BorderColor = Color.FromArgb(200, 200, 200);
+            btnClose.FlatAppearance.BorderSize = 1;
+            btnClose.Font = new Font("Segoe UI", 9.5f);
             btnClose.Cursor = Cursors.Hand;
             btnClose.Click += (s, e) => this.Close();
             panelBottom.Controls.Add(btnClose);
@@ -167,21 +225,32 @@ namespace AJSetup
         private void SetStatus(string text)
         {
             if (InvokeRequired)
-                Invoke(new Action(() => lblStatus.Text = text));
+                Invoke(new Action(() => { lblStatus.Text = text; }));
             else
                 lblStatus.Text = text;
         }
 
         private void ShowSuccess(string message)
         {
-            if (InvokeRequired)
-            {
-                Invoke(new Action(() => ShowSuccess(message)));
-                return;
-            }
+            if (InvokeRequired) { Invoke(new Action(() => ShowSuccess(message))); return; }
+            progressBar.StopAnimation();
             progressBar.Visible = false;
             lblTitle.Text = message;
-            lblTitle.ForeColor = Color.FromArgb(0, 130, 50);
+            lblTitle.ForeColor = Color.FromArgb(0, 140, 60);
+            lblStatus.Text = "";
+            lblSubtitle.Text = "You can now open Microsoft Project to get started.";
+            btnClose.Text = "Close";
+            btnInstall.Visible = false;
+        }
+
+        private void ShowError(string message)
+        {
+            if (InvokeRequired) { Invoke(new Action(() => ShowError(message))); return; }
+            progressBar.StopAnimation();
+            progressBar.Visible = false;
+            lblTitle.Text = "Installation Failed";
+            lblTitle.ForeColor = Color.FromArgb(200, 30, 30);
+            lblSubtitle.Text = message;
             lblStatus.Text = "";
             btnClose.Text = "Close";
             btnInstall.Visible = false;
@@ -192,22 +261,35 @@ namespace AJSetup
             btnInstall.Enabled = false;
             btnInstall.Visible = false;
             progressBar.Visible = true;
+            progressBar.StartAnimation();
 
             try
             {
-                string msiPath = _silentMsiPath ?? Path.Combine(
-                    Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),
-                    "AJAddIn.msi");
-
-                if (!File.Exists(msiPath))
-                    throw new Exception($"AJAddIn.msi not found.\nExpected: {msiPath}");
-
                 // Check if MS Project is running
-                var projectProcesses = Process.GetProcessesByName("WINPROJ");
-                if (projectProcesses.Length > 0)
+                if (Process.GetProcessesByName("WINPROJ").Length > 0)
                     throw new Exception("Microsoft Project is currently open.\nPlease close MS Project and try again.");
 
-                // Step 1: Uninstall existing MSI silently
+                string msiPath = _silentMsiPath;
+
+                // If we have a download URL, download the MSI first
+                if (msiPath == null && _downloadUrl != null)
+                {
+                    SetStatus("Downloading update...");
+                    string tempDir = Path.Combine(Path.GetTempPath(), "AJToolsUpdate");
+                    Directory.CreateDirectory(tempDir);
+                    msiPath = Path.Combine(tempDir, "AJAddIn.msi");
+
+                    using (var http = new HttpClient())
+                    {
+                        byte[] msiBytes = await http.GetByteArrayAsync(_downloadUrl);
+                        File.WriteAllBytes(msiPath, msiBytes);
+                    }
+                }
+
+                if (msiPath == null || !File.Exists(msiPath))
+                    throw new Exception($"AJAddIn.msi not found.\nExpected: {msiPath}");
+
+                // Step 1: Uninstall existing
                 SetStatus("Removing previous version...");
                 var uninstall = new Process();
                 uninstall.StartInfo.FileName = "msiexec";
@@ -216,7 +298,6 @@ namespace AJSetup
                 uninstall.StartInfo.CreateNoWindow = true;
                 uninstall.Start();
                 await Task.Run(() => uninstall.WaitForExit());
-
                 await Task.Delay(1000);
 
                 // Step 2: Clean VSTO SolutionMetadata
@@ -225,11 +306,10 @@ namespace AJSetup
 
                 // Step 3: Clean assembly cache
                 await Task.Run(() => CleanAssemblyCache());
-
                 await Task.Delay(500);
 
                 // Step 4: Install new MSI
-                SetStatus("Installing AJ Tools...");
+                SetStatus("Installing Arian Jahandarfard's Tools...");
                 var install = new Process();
                 install.StartInfo.FileName = "msiexec";
                 install.StartInfo.Arguments = $"/i \"{msiPath}\" /quiet /norestart";
@@ -237,10 +317,9 @@ namespace AJSetup
                 install.StartInfo.CreateNoWindow = true;
                 install.Start();
                 await Task.Run(() => install.WaitForExit());
-
                 await Task.Delay(1000);
 
-                // Step 5: Verify files installed
+                // Step 5: Verify files
                 SetStatus("Verifying installation...");
                 string vstoTarget = @"C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto";
                 bool filesExist = await Task.Run(() =>
@@ -256,8 +335,8 @@ namespace AJSetup
                 if (!filesExist)
                     throw new Exception("Files did not install correctly.");
 
-                // Step 6: Register with VSTO
-                SetStatus("Registering with MS Project...");
+                // Step 6: Register VSTO
+                SetStatus("Registering with Microsoft Project...");
                 string vstoInstaller = GetVstoInstallerPath();
                 var vstoProcess = new Process();
                 vstoProcess.StartInfo.FileName = vstoInstaller;
@@ -266,7 +345,7 @@ namespace AJSetup
                 vstoProcess.Start();
                 await Task.Run(() => vstoProcess.WaitForExit());
 
-                // Step 7: Show success
+                // Step 7: Success
                 string successMsg = _isUpdateMode
                     ? $"Successfully Updated{(_updateVersion != null ? " to v" + _updateVersion : "")}!"
                     : "Successfully Installed!";
@@ -274,13 +353,7 @@ namespace AJSetup
             }
             catch (Exception ex)
             {
-                progressBar.Visible = false;
-                lblStatus.Text = "";
-                lblTitle.Text = "Installation Failed";
-                lblTitle.ForeColor = Color.Red;
-                lblSubtitle.Text = ex.Message;
-                btnClose.Text = "Close";
-                btnInstall.Visible = false;
+                ShowError(ex.Message);
             }
         }
 
@@ -292,11 +365,8 @@ namespace AJSetup
                     @"Software\Microsoft\VSTO\SolutionMetadata", true))
                 {
                     if (key == null) return;
-                    foreach (var subKeyName in key.GetSubKeyNames())
-                    {
-                        try { key.DeleteSubKeyTree(subKeyName); }
-                        catch { }
-                    }
+                    foreach (var name in key.GetSubKeyNames())
+                        try { key.DeleteSubKeyTree(name); } catch { }
                 }
             }
             catch { }
@@ -306,21 +376,16 @@ namespace AJSetup
         {
             try
             {
-                string assemblyCache = Path.Combine(
+                string dl3 = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "assembly", "dl3");
-
-                if (!Directory.Exists(assemblyCache)) return;
-
-                foreach (var dir in Directory.GetDirectories(assemblyCache, "*", SearchOption.AllDirectories))
+                if (!Directory.Exists(dl3)) return;
+                foreach (var dir in Directory.GetDirectories(dl3, "*", SearchOption.AllDirectories))
                 {
                     try
                     {
-                        var files = Directory.GetFiles(dir, "*Arian*");
-                        if (files.Length > 0)
-                        {
-                            Directory.Delete(Path.GetDirectoryName(files[0]), true);
-                        }
+                        if (Directory.GetFiles(dir, "*Arian*").Length > 0)
+                            Directory.Delete(Path.GetDirectoryName(dir), true);
                     }
                     catch { }
                 }
@@ -330,11 +395,53 @@ namespace AJSetup
 
         private string GetVstoInstallerPath()
         {
-            string path86 = @"C:\Program Files (x86)\Common Files\Microsoft Shared\VSTO\10.0\VSTOInstaller.exe";
-            string path64 = @"C:\Program Files\Common Files\microsoft shared\VSTO\10.0\VSTOInstaller.exe";
-            if (File.Exists(path86)) return path86;
-            if (File.Exists(path64)) return path64;
+            string p86 = @"C:\Program Files (x86)\Common Files\Microsoft Shared\VSTO\10.0\VSTOInstaller.exe";
+            string p64 = @"C:\Program Files\Common Files\microsoft shared\VSTO\10.0\VSTOInstaller.exe";
+            if (File.Exists(p86)) return p86;
+            if (File.Exists(p64)) return p64;
             throw new Exception("VSTO Runtime not found on this machine.");
+        }
+    }
+
+    // Custom animated progress bar
+    public class AJProgressBar : Control
+    {
+        public Color NavyColor { get; set; } = Color.FromArgb(1, 44, 100);
+        public Color AccentColor { get; set; } = Color.FromArgb(0, 146, 231);
+
+        private System.Windows.Forms.Timer _timer;
+        private float _offset = 0f;
+
+        public AJProgressBar()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.UserPaint, true);
+            _timer = new System.Windows.Forms.Timer();
+            _timer.Interval = 20;
+            _timer.Tick += (s, e) => { _offset += 2f; if (_offset > 60) _offset = 0; Invalidate(); };
+        }
+
+        public void StartAnimation() => _timer.Start();
+        public void StopAnimation() => _timer.Stop();
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // Background track
+            using (var brush = new SolidBrush(Color.FromArgb(220, 220, 220)))
+                g.FillRectangle(brush, 0, 0, Width, Height);
+
+            // Animated shimmer fill
+            using (var brush = new LinearGradientBrush(
+                new Rectangle(-60 + (int)_offset, 0, Width + 120, Height),
+                NavyColor, AccentColor, LinearGradientMode.Horizontal))
+            {
+                brush.SetSigmaBellShape(0.5f);
+                g.FillRectangle(brush, 0, 0, Width, Height);
+            }
         }
     }
 }

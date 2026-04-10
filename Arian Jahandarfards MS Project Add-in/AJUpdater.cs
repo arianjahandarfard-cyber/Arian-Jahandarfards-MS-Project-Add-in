@@ -70,9 +70,8 @@ namespace ArianJahandarfardsAddIn
                 byte[] msiBytes = await _http.GetByteArrayAsync(remote.MsiUrl);
                 File.WriteAllBytes(msiPath, msiBytes);
 
-                // Find AJSetup.exe next to the installed DLL
-                string addInDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                string setupExe = Path.Combine(addInDir, "AJSetup.exe");
+                // Find AJSetup.exe in the fixed install location
+                string setupExe = @"C:\Program Files (x86)\AJTools\AJSetup.exe";
 
                 if (!File.Exists(setupExe))
                     throw new Exception($"AJSetup.exe not found at:\n{setupExe}\n\nPlease reinstall AJ Tools.");

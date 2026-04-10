@@ -283,6 +283,7 @@ namespace ArianJahandarfardsAddIn
 
             private readonly System.Windows.Forms.Timer _timer;
             private float _offset = 0f;
+            private const int SegmentWidth = 120;
 
             public AJShimmerBar()
             {
@@ -290,16 +291,22 @@ namespace ArianJahandarfardsAddIn
                          ControlStyles.AllPaintingInWmPaint |
                          ControlStyles.UserPaint, true);
                 _timer = new System.Windows.Forms.Timer();
-                _timer.Interval = 20;
+                _timer.Interval = 16;
                 _timer.Tick += (s, e) =>
                 {
-                    _offset += 2f;
-                    if (_offset > 60) _offset = 0;
+                    _offset += 6f;
+                    if (_offset > Width + SegmentWidth)
+                        _offset = -SegmentWidth;
                     Invalidate();
                 };
             }
 
-            public void StartAnimation() => _timer.Start();
+            public void StartAnimation()
+            {
+                _offset = -SegmentWidth;
+                _timer.Start();
+            }
+
             public void StopAnimation() => _timer.Stop();
 
             protected override void OnPaint(PaintEventArgs e)
@@ -308,12 +315,20 @@ namespace ArianJahandarfardsAddIn
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 using (var bg = new SolidBrush(Color.FromArgb(220, 220, 220)))
                     g.FillRectangle(bg, 0, 0, Width, Height);
+
+                int segmentLeft = (int)_offset;
+                int visibleLeft = Math.Max(0, segmentLeft);
+                int visibleRight = Math.Min(Width, segmentLeft + SegmentWidth);
+                int visibleWidth = visibleRight - visibleLeft;
+
+                if (visibleWidth <= 0)
+                    return;
+
                 using (var brush = new LinearGradientBrush(
-                    new Rectangle(-60 + (int)_offset, 0, Width + 120, Height),
+                    new Rectangle(segmentLeft, 0, SegmentWidth, Height),
                     NavyColor, AccentColor, LinearGradientMode.Horizontal))
                 {
-                    brush.SetSigmaBellShape(0.5f);
-                    g.FillRectangle(brush, 0, 0, Width, Height);
+                    g.FillRectangle(brush, visibleLeft, 0, visibleWidth, Height);
                 }
             }
         }

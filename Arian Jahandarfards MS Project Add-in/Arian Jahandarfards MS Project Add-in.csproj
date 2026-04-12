@@ -132,6 +132,10 @@
     <Compile Include="AJProgress.Designer.cs">
       <DependentUpon>AJProgress.cs</DependentUpon>
     </Compile>
+    <Compile Include="AJProjectLinker.cs" />
+    <Compile Include="AJProjectLinkerForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="AJRibbon.cs">
       <SubType>Component</SubType>
     </Compile>

@@ -39,6 +39,15 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             frm.ShowDialog();
         }
 
+        private void btnProjectLinkerExcel_Click(object sender, RibbonControlEventArgs e) =>
+            Globals.ThisAddIn._projectLinker?.ActivateMode(AJProjectLinkerMode.Excel);
+
+        private void btnProjectLinkerBoth_Click(object sender, RibbonControlEventArgs e) =>
+            Globals.ThisAddIn._projectLinker?.ActivateMode(AJProjectLinkerMode.ExcelAndProject);
+
+        private void btnProjectLinkerOff_Click(object sender, RibbonControlEventArgs e) =>
+            Globals.ThisAddIn._projectLinker?.ActivateMode(AJProjectLinkerMode.Off);
+
         private async void btnCheckUpdates_Click(object sender, RibbonControlEventArgs e) =>
             await AJUpdater.CheckForUpdatesAsync(silent: false);
     }

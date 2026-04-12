@@ -9,6 +9,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Reflection;
+using System.Linq;
 using Microsoft.Win32;
 
 namespace AJSetup
@@ -295,15 +296,11 @@ namespace AJSetup
                 if (!File.Exists(msiPath))
                     throw new Exception($"AJAddIn.msi not found.\nLooked in: {msiPath}");
 
-                // Step 1: Uninstall
+                // Step 1: Uninstall older AJ Tools MSI packages by product code.
+                // Uninstalling by the incoming MSI path only targets that exact package
+                // and leaves older ProductCodes behind in Apps & features.
                 SetStatus("Removing previous version...");
-                var uninstall = new Process();
-                uninstall.StartInfo.FileName = "msiexec";
-                uninstall.StartInfo.Arguments = $"/x \"{msiPath}\" /quiet /norestart";
-                uninstall.StartInfo.UseShellExecute = false;
-                uninstall.StartInfo.CreateNoWindow = true;
-                uninstall.Start();
-                await Task.Run(() => uninstall.WaitForExit());
+                await Task.Run(() => UninstallExistingAjToolsPackages());
                 await Task.Delay(1000);
 
                 // Step 2: Clean VSTO metadata
@@ -311,6 +308,7 @@ namespace AJSetup
                 await Task.Run(() => CleanVstoSolutionMetadata());
                 await Task.Run(() => CleanCurrentUserProjectAddInRegistration());
                 await Task.Run(() => CleanCurrentUserUninstallEntries());
+                await Task.Run(() => CleanMachineWideUninstallEntries());
                 await Task.Run(() => CleanAssemblyCache());
                 await Task.Delay(500);
 
@@ -323,6 +321,8 @@ namespace AJSetup
                 install.StartInfo.CreateNoWindow = true;
                 install.Start();
                 await Task.Run(() => install.WaitForExit());
+                if (install.ExitCode != 0 && install.ExitCode != 3010)
+                    throw new Exception($"MSI installation failed with exit code {install.ExitCode}.");
                 await Task.Delay(1000);
 
                 // Step 4: Verify
@@ -348,6 +348,8 @@ namespace AJSetup
                 vsto.StartInfo.UseShellExecute = true;
                 vsto.Start();
                 await Task.Run(() => vsto.WaitForExit());
+                if (vsto.ExitCode != 0)
+                    throw new Exception($"VSTO registration failed with exit code {vsto.ExitCode}.");
 
                 string successMsg = _isUpdateMode
                     ? $"Successfully Updated{(_updateVersion != null ? " to v" + _updateVersion : "")}!"
@@ -436,6 +438,93 @@ namespace AJSetup
                 }
             }
             catch { }
+        }
+
+        private void CleanMachineWideUninstallEntries()
+        {
+            try
+            {
+                var wow6432 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+                using (var key = wow6432.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall", true))
+                {
+                    if (key == null) return;
+
+                    foreach (var n in key.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using (var subKey = key.OpenSubKey(n))
+                            {
+                                string displayName = subKey?.GetValue("DisplayName") as string;
+                                if (!string.Equals(displayName, "AJ Tools", StringComparison.OrdinalIgnoreCase))
+                                    continue;
+                            }
+
+                            key.DeleteSubKeyTree(n, false);
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void UninstallExistingAjToolsPackages()
+        {
+            foreach (string productCode in GetInstalledAjToolsProductCodes())
+            {
+                try
+                {
+                    var uninstall = new Process();
+                    uninstall.StartInfo.FileName = "msiexec";
+                    uninstall.StartInfo.Arguments = $"/x {productCode} /quiet /norestart";
+                    uninstall.StartInfo.UseShellExecute = false;
+                    uninstall.StartInfo.CreateNoWindow = true;
+                    uninstall.Start();
+                    uninstall.WaitForExit();
+
+                    // 0 = success, 1605 = product not installed, 1614 = already uninstalled, 3010 = reboot required.
+                    if (uninstall.ExitCode != 0 &&
+                        uninstall.ExitCode != 1605 &&
+                        uninstall.ExitCode != 1614 &&
+                        uninstall.ExitCode != 3010)
+                    {
+                        throw new Exception($"MSI uninstall failed for {productCode} with exit code {uninstall.ExitCode}.");
+                    }
+                }
+                catch (Exception)
+                {
+                    throw;
+                }
+            }
+        }
+
+        private string[] GetInstalledAjToolsProductCodes()
+        {
+            try
+            {
+                var wow6432 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+                using (var key = wow6432.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall"))
+                {
+                    if (key == null) return Array.Empty<string>();
+
+                    return key.GetSubKeyNames()
+                        .Where(n => n.StartsWith("{", StringComparison.OrdinalIgnoreCase) && n.EndsWith("}", StringComparison.OrdinalIgnoreCase))
+                        .Where(n =>
+                        {
+                            using (var subKey = key.OpenSubKey(n))
+                            {
+                                string displayName = subKey?.GetValue("DisplayName") as string;
+                                return string.Equals(displayName, "AJ Tools", StringComparison.OrdinalIgnoreCase);
+                            }
+                        })
+                        .ToArray();
+                }
+            }
+            catch
+            {
+                return Array.Empty<string>();
+            }
         }
 
         private void EnsureLocalMsiIsFresh(string msiPath)

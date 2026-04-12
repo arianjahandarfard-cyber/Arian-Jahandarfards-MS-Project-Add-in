@@ -28,6 +28,7 @@
             this.Update = this.Factory.CreateRibbonGroup();
             this.group1 = this.Factory.CreateRibbonGroup();
             this.group2 = this.Factory.CreateRibbonGroup();
+            this.group3 = this.Factory.CreateRibbonGroup();
             this.btnCheckUpdates = this.Factory.CreateRibbonButton();
             this.btnCapture = this.Factory.CreateRibbonButton();
             this.btnReset = this.Factory.CreateRibbonButton();
@@ -36,10 +37,15 @@
             this.btnStopAuto = this.Factory.CreateRibbonButton();
             this.btnSettings = this.Factory.CreateRibbonButton();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
+            this.menuProjectLinker = this.Factory.CreateRibbonMenu();
+            this.btnProjectLinkerExcel = this.Factory.CreateRibbonButton();
+            this.btnProjectLinkerBoth = this.Factory.CreateRibbonButton();
+            this.btnProjectLinkerOff = this.Factory.CreateRibbonButton();
             this.tab1.SuspendLayout();
             this.Update.SuspendLayout();
             this.group1.SuspendLayout();
             this.group2.SuspendLayout();
+            this.group3.SuspendLayout();
             this.SuspendLayout();
             // 
             // tab1
@@ -48,6 +54,7 @@
             this.tab1.Groups.Add(this.Update);
             this.tab1.Groups.Add(this.group1);
             this.tab1.Groups.Add(this.group2);
+            this.tab1.Groups.Add(this.group3);
             this.tab1.Label = "Arian Jahandarfard\'s Tools";
             this.tab1.Name = "tab1";
             // 
@@ -72,6 +79,12 @@
             this.group2.Items.Add(this.btnGoToUID);
             this.group2.Label = "-----";
             this.group2.Name = "group2";
+            // 
+            // group3
+            // 
+            this.group3.Items.Add(this.menuProjectLinker);
+            this.group3.Label = "Project Linker";
+            this.group3.Name = "group3";
             // 
             // btnCheckUpdates
             // 
@@ -143,6 +156,42 @@
             this.btnGoToUID.ShowImage = true;
             this.btnGoToUID.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnGoToUID_Click);
             // 
+            // menuProjectLinker
+            // 
+            this.menuProjectLinker.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.menuProjectLinker.Image = ((System.Drawing.Image)(resources.GetObject("btnGoToUID.Image")));
+            this.menuProjectLinker.Items.Add(this.btnProjectLinkerExcel);
+            this.menuProjectLinker.Items.Add(this.btnProjectLinkerBoth);
+            this.menuProjectLinker.Items.Add(this.btnProjectLinkerOff);
+            this.menuProjectLinker.Label = "Project Linker";
+            this.menuProjectLinker.Name = "menuProjectLinker";
+            this.menuProjectLinker.ScreenTip = "Choose how the Project Linker should run";
+            this.menuProjectLinker.ShowImage = true;
+            // 
+            // btnProjectLinkerExcel
+            // 
+            this.btnProjectLinkerExcel.Label = "Excel";
+            this.btnProjectLinkerExcel.Name = "btnProjectLinkerExcel";
+            this.btnProjectLinkerExcel.ScreenTip = "Click an Excel row to jump to the matching Project task";
+            this.btnProjectLinkerExcel.ShowImage = false;
+            this.btnProjectLinkerExcel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnProjectLinkerExcel_Click);
+            // 
+            // btnProjectLinkerBoth
+            // 
+            this.btnProjectLinkerBoth.Label = "Excel + Project";
+            this.btnProjectLinkerBoth.Name = "btnProjectLinkerBoth";
+            this.btnProjectLinkerBoth.ScreenTip = "Link Excel rows to Project and Project tasks back to Excel";
+            this.btnProjectLinkerBoth.ShowImage = false;
+            this.btnProjectLinkerBoth.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnProjectLinkerBoth_Click);
+            // 
+            // btnProjectLinkerOff
+            // 
+            this.btnProjectLinkerOff.Label = "Off";
+            this.btnProjectLinkerOff.Name = "btnProjectLinkerOff";
+            this.btnProjectLinkerOff.ScreenTip = "Turn Project Linker off";
+            this.btnProjectLinkerOff.ShowImage = false;
+            this.btnProjectLinkerOff.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnProjectLinkerOff_Click);
+            // 
             // AJRibbon
             // 
             this.Name = "AJRibbon";
@@ -157,6 +206,8 @@
             this.group1.PerformLayout();
             this.group2.ResumeLayout(false);
             this.group2.PerformLayout();
+            this.group3.ResumeLayout(false);
+            this.group3.PerformLayout();
             this.ResumeLayout(false);
 
         }
@@ -175,6 +226,11 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnGoToUID;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup Update;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnCheckUpdates;
+        internal Microsoft.Office.Tools.Ribbon.RibbonGroup group3;
+        internal Microsoft.Office.Tools.Ribbon.RibbonMenu menuProjectLinker;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerExcel;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerBoth;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerOff;
     }
 
     partial class ThisRibbonCollection

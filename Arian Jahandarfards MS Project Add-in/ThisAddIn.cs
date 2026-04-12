@@ -8,11 +8,13 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
     public partial class ThisAddIn
     {
         internal AJMilestoneTracker _tracker;
+        internal AJProjectLinker _projectLinker;
         private Timer _startupUpdateTimer;
 
         private void ThisAddIn_Startup(object sender, EventArgs e)
         {
             _tracker = new AJMilestoneTracker(this.Application);
+            _projectLinker = new AJProjectLinker(this.Application);
 
             _startupUpdateTimer = new Timer { Interval = 3000 };
             _startupUpdateTimer.Tick += async (s, args) =>
@@ -39,6 +41,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _startupUpdateTimer?.Stop();
             _startupUpdateTimer?.Dispose();
             _startupUpdateTimer = null;
+            _projectLinker?.Dispose();
+            _projectLinker = null;
             _tracker?.Dispose();
         }
 

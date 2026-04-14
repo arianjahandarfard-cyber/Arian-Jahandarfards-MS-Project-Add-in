@@ -26,21 +26,29 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AJRibbon));
             this.tab1 = this.Factory.CreateRibbonTab();
             this.Update = this.Factory.CreateRibbonGroup();
-            this.group1 = this.Factory.CreateRibbonGroup();
-            this.group2 = this.Factory.CreateRibbonGroup();
-            this.group3 = this.Factory.CreateRibbonGroup();
             this.btnCheckUpdates = this.Factory.CreateRibbonButton();
+            this.group1 = this.Factory.CreateRibbonGroup();
             this.btnCapture = this.Factory.CreateRibbonButton();
             this.btnReset = this.Factory.CreateRibbonButton();
             this.btnRun = this.Factory.CreateRibbonButton();
             this.btnStartAuto = this.Factory.CreateRibbonButton();
             this.btnStopAuto = this.Factory.CreateRibbonButton();
             this.btnSettings = this.Factory.CreateRibbonButton();
+            this.group2 = this.Factory.CreateRibbonGroup();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
+            this.group3 = this.Factory.CreateRibbonGroup();
             this.menuProjectLinker = this.Factory.CreateRibbonMenu();
             this.btnProjectLinkerExcel = this.Factory.CreateRibbonButton();
             this.btnProjectLinkerBoth = this.Factory.CreateRibbonButton();
-            this.btnProjectLinkerOff = this.Factory.CreateRibbonButton();
+            this.menuHighlighterOptions = this.Factory.CreateRibbonMenu();
+            this.chkHighlighterOff = this.Factory.CreateRibbonCheckBox();
+            this.separatorHighlighter = this.Factory.CreateRibbonSeparator();
+            this.btnHighlightYellow = this.Factory.CreateRibbonButton();
+            this.btnHighlightGreen = this.Factory.CreateRibbonButton();
+            this.btnHighlightBlue = this.Factory.CreateRibbonButton();
+            this.btnHighlightOrange = this.Factory.CreateRibbonButton();
+            this.btnHighlightRed = this.Factory.CreateRibbonButton();
+            this.btnHighlightPurple = this.Factory.CreateRibbonButton();
             this.tab1.SuspendLayout();
             this.Update.SuspendLayout();
             this.group1.SuspendLayout();
@@ -63,6 +71,15 @@
             this.Update.Items.Add(this.btnCheckUpdates);
             this.Update.Name = "Update";
             // 
+            // btnCheckUpdates
+            // 
+            this.btnCheckUpdates.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.btnCheckUpdates.Image = ((System.Drawing.Image)(resources.GetObject("btnCheckUpdates.Image")));
+            this.btnCheckUpdates.Label = "Check For Updates";
+            this.btnCheckUpdates.Name = "btnCheckUpdates";
+            this.btnCheckUpdates.ShowImage = true;
+            this.btnCheckUpdates.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCheckUpdates_Click);
+            // 
             // group1
             // 
             this.group1.Items.Add(this.btnCapture);
@@ -74,32 +91,11 @@
             this.group1.Label = "Milestone Tracker";
             this.group1.Name = "group1";
             // 
-            // group2
-            // 
-            this.group2.Items.Add(this.btnGoToUID);
-            this.group2.Label = "-----";
-            this.group2.Name = "group2";
-            // 
-            // group3
-            // 
-            this.group3.Items.Add(this.menuProjectLinker);
-            this.group3.Label = "Project Linker";
-            this.group3.Name = "group3";
-            // 
-            // btnCheckUpdates
-            // 
-            this.btnCheckUpdates.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnCheckUpdates.Image = ((System.Drawing.Image)(resources.GetObject("btnCheckUpdates.Image")));
-            this.btnCheckUpdates.Label = "Update for Check";
-            this.btnCheckUpdates.Name = "btnCheckUpdates";
-            this.btnCheckUpdates.ShowImage = true;
-            this.btnCheckUpdates.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCheckUpdates_Click);
-            // 
             // btnCapture
             // 
             this.btnCapture.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
             this.btnCapture.Image = ((System.Drawing.Image)(resources.GetObject("btnCapture.Image")));
-            this.btnCapture.Label = "   Capture Snapshot";
+            this.btnCapture.Label = "Capture Snapshot";
             this.btnCapture.Name = "btnCapture";
             this.btnCapture.ShowImage = true;
             this.btnCapture.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnCapture_Click);
@@ -146,23 +142,35 @@
             this.btnSettings.ShowImage = true;
             this.btnSettings.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnSettings_Click);
             // 
+            // group2
+            // 
+            this.group2.Items.Add(this.btnGoToUID);
+            this.group2.Label = "-----";
+            this.group2.Name = "group2";
+            // 
             // btnGoToUID
             // 
             this.btnGoToUID.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
             this.btnGoToUID.Image = ((System.Drawing.Image)(resources.GetObject("btnGoToUID.Image")));
-            this.btnGoToUID.Label = "Search UID";
+            this.btnGoToUID.Label = "UID Search";
             this.btnGoToUID.Name = "btnGoToUID";
             this.btnGoToUID.ScreenTip = "Navigate to task by UniqueID";
             this.btnGoToUID.ShowImage = true;
             this.btnGoToUID.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnGoToUID_Click);
             // 
+            // group3
+            // 
+            this.group3.Items.Add(this.menuProjectLinker);
+            this.group3.Label = "Status Tools";
+            this.group3.Name = "group3";
+            // 
             // menuProjectLinker
             // 
             this.menuProjectLinker.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.menuProjectLinker.Image = ((System.Drawing.Image)(resources.GetObject("btnGoToUID.Image")));
+            this.menuProjectLinker.Image = ((System.Drawing.Image)(resources.GetObject("menuProjectLinker.Image")));
             this.menuProjectLinker.Items.Add(this.btnProjectLinkerExcel);
             this.menuProjectLinker.Items.Add(this.btnProjectLinkerBoth);
-            this.menuProjectLinker.Items.Add(this.btnProjectLinkerOff);
+            this.menuProjectLinker.Items.Add(this.menuHighlighterOptions);
             this.menuProjectLinker.Label = "Project Linker";
             this.menuProjectLinker.Name = "menuProjectLinker";
             this.menuProjectLinker.ScreenTip = "Choose how the Project Linker should run";
@@ -170,27 +178,97 @@
             // 
             // btnProjectLinkerExcel
             // 
+            this.btnProjectLinkerExcel.Image = ((System.Drawing.Image)(resources.GetObject("btnProjectLinkerExcel.Image")));
             this.btnProjectLinkerExcel.Label = "Excel";
             this.btnProjectLinkerExcel.Name = "btnProjectLinkerExcel";
             this.btnProjectLinkerExcel.ScreenTip = "Click an Excel row to jump to the matching Project task";
-            this.btnProjectLinkerExcel.ShowImage = false;
+            this.btnProjectLinkerExcel.ShowImage = true;
             this.btnProjectLinkerExcel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnProjectLinkerExcel_Click);
             // 
             // btnProjectLinkerBoth
             // 
+            this.btnProjectLinkerBoth.Image = ((System.Drawing.Image)(resources.GetObject("btnProjectLinkerBoth.Image")));
             this.btnProjectLinkerBoth.Label = "Excel + Project";
             this.btnProjectLinkerBoth.Name = "btnProjectLinkerBoth";
             this.btnProjectLinkerBoth.ScreenTip = "Link Excel rows to Project and Project tasks back to Excel";
-            this.btnProjectLinkerBoth.ShowImage = false;
+            this.btnProjectLinkerBoth.ShowImage = true;
             this.btnProjectLinkerBoth.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnProjectLinkerBoth_Click);
             // 
-            // btnProjectLinkerOff
+            // menuHighlighterOptions
             // 
-            this.btnProjectLinkerOff.Label = "Off";
-            this.btnProjectLinkerOff.Name = "btnProjectLinkerOff";
-            this.btnProjectLinkerOff.ScreenTip = "Turn Project Linker off";
-            this.btnProjectLinkerOff.ShowImage = false;
-            this.btnProjectLinkerOff.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnProjectLinkerOff_Click);
+            this.menuHighlighterOptions.Image = ((System.Drawing.Image)(resources.GetObject("menuHighlighterOptions.Image")));
+            this.menuHighlighterOptions.Items.Add(this.chkHighlighterOff);
+            this.menuHighlighterOptions.Items.Add(this.separatorHighlighter);
+            this.menuHighlighterOptions.Items.Add(this.btnHighlightYellow);
+            this.menuHighlighterOptions.Items.Add(this.btnHighlightGreen);
+            this.menuHighlighterOptions.Items.Add(this.btnHighlightBlue);
+            this.menuHighlighterOptions.Items.Add(this.btnHighlightOrange);
+            this.menuHighlighterOptions.Items.Add(this.btnHighlightRed);
+            this.menuHighlighterOptions.Items.Add(this.btnHighlightPurple);
+            this.menuHighlighterOptions.Label = "Highlighter Options";
+            this.menuHighlighterOptions.Name = "menuHighlighterOptions";
+            this.menuHighlighterOptions.ScreenTip = "Choose whether matched tasks should stay highlighted and what color to use";
+            this.menuHighlighterOptions.ShowImage = true;
+            // 
+            // chkHighlighterOff
+            // 
+            this.chkHighlighterOff.Checked = true;
+            this.chkHighlighterOff.Label = "Off";
+            this.chkHighlighterOff.Name = "chkHighlighterOff";
+            this.chkHighlighterOff.ScreenTip = "Turn task highlighting off";
+            this.chkHighlighterOff.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.chkHighlighterOff_Click);
+            // 
+            // separatorHighlighter
+            // 
+            this.separatorHighlighter.Name = "separatorHighlighter";
+            // 
+            // btnHighlightYellow
+            // 
+            this.btnHighlightYellow.Label = "Yellow";
+            this.btnHighlightYellow.Name = "btnHighlightYellow";
+            this.btnHighlightYellow.ScreenTip = "Highlight matching tasks in yellow";
+            this.btnHighlightYellow.ShowImage = true;
+            this.btnHighlightYellow.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightYellow_Click);
+            // 
+            // btnHighlightGreen
+            // 
+            this.btnHighlightGreen.Label = "Green";
+            this.btnHighlightGreen.Name = "btnHighlightGreen";
+            this.btnHighlightGreen.ScreenTip = "Highlight matching tasks in green";
+            this.btnHighlightGreen.ShowImage = true;
+            this.btnHighlightGreen.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightGreen_Click);
+            // 
+            // btnHighlightBlue
+            // 
+            this.btnHighlightBlue.Label = "Blue";
+            this.btnHighlightBlue.Name = "btnHighlightBlue";
+            this.btnHighlightBlue.ScreenTip = "Highlight matching tasks in blue";
+            this.btnHighlightBlue.ShowImage = true;
+            this.btnHighlightBlue.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightBlue_Click);
+            // 
+            // btnHighlightOrange
+            // 
+            this.btnHighlightOrange.Label = "Orange";
+            this.btnHighlightOrange.Name = "btnHighlightOrange";
+            this.btnHighlightOrange.ScreenTip = "Highlight matching tasks in orange";
+            this.btnHighlightOrange.ShowImage = true;
+            this.btnHighlightOrange.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightOrange_Click);
+            // 
+            // btnHighlightRed
+            // 
+            this.btnHighlightRed.Label = "Red";
+            this.btnHighlightRed.Name = "btnHighlightRed";
+            this.btnHighlightRed.ScreenTip = "Highlight matching tasks in red";
+            this.btnHighlightRed.ShowImage = true;
+            this.btnHighlightRed.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightRed_Click);
+            // 
+            // btnHighlightPurple
+            // 
+            this.btnHighlightPurple.Label = "Purple";
+            this.btnHighlightPurple.Name = "btnHighlightPurple";
+            this.btnHighlightPurple.ScreenTip = "Highlight matching tasks in purple";
+            this.btnHighlightPurple.ShowImage = true;
+            this.btnHighlightPurple.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightPurple_Click);
             // 
             // AJRibbon
             // 
@@ -230,7 +308,15 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonMenu menuProjectLinker;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerExcel;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerBoth;
-        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerOff;
+        internal Microsoft.Office.Tools.Ribbon.RibbonMenu menuHighlighterOptions;
+        internal Microsoft.Office.Tools.Ribbon.RibbonCheckBox chkHighlighterOff;
+        internal Microsoft.Office.Tools.Ribbon.RibbonSeparator separatorHighlighter;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightYellow;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightGreen;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightBlue;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightOrange;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightRed;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightPurple;
     }
 
     partial class ThisRibbonCollection

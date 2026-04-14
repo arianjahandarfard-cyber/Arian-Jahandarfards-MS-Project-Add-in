@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="AJSetup/AJSetup.csproj" />
-  <Project Path="Arian Jahandarfards MS Project Add-in/Arian Jahandarfards MS Project Add-in.csproj" />
+  <Project Path="AJSetup/AJSetup.csproj" Id="8b44d548-7a91-43d3-9f93-aecb41922c22" />
+  <Project Path="Arian Jahandarfards MS Project Add-in/Arian Jahandarfards MS Project Add-in.csproj" Id="1db8eba1-1376-4a93-a23a-b164d72f99e8" />
 </Solution>

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -27,6 +28,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private Label lblPowerValue;
         private Panel pnlPowerDot;
         private Label lblStatus;
+
+        public event EventHandler CloseRequested;
 
         public AJProjectLinkerForm()
         {
@@ -72,8 +75,14 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         {
             SuspendLayout();
 
+            const int panelWidth = 200;
+            const int panelHeight = 70;
+            const int panelPadding = 8;
+            int rightEdge = panelWidth - panelPadding;
+            int contentWidth = panelWidth - (panelPadding * 2);
+
             Text = "Project Linker";
-            ClientSize = new Size(248, 92);
+            ClientSize = new Size(panelWidth, panelHeight);
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
@@ -101,7 +110,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             var header = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 22,
+                Height = 24,
                 BackColor = NavyDark
             };
             header.MouseDown += Header_MouseDown;
@@ -113,10 +122,17 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 ForeColor = White,
                 Font = new Font("Segoe UI", 8.3f, FontStyle.Bold),
                 AutoSize = true,
-                Location = new Point(8, 3)
+                Location = new Point(34, 5)
             };
             title.MouseDown += Header_MouseDown;
             header.Controls.Add(title);
+
+            var logo = CreateLogoPictureBox();
+            if (logo != null)
+            {
+                shell.Controls.Add(logo);
+                logo.BringToFront();
+            }
 
             var btnClose = new Button
             {
@@ -125,12 +141,16 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 BackColor = NavyDark,
                 ForeColor = White,
                 Size = new Size(16, 14),
-                Location = new Point(225, 3),
+                Location = new Point(rightEdge - 16, 3),
                 Font = new Font("Segoe UI", 6.1f, FontStyle.Bold),
                 TabStop = false
             };
             btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.Click += (s, e) => Close();
+            btnClose.Click += (s, e) =>
+            {
+                CloseRequested?.Invoke(this, EventArgs.Empty);
+                Close();
+            };
             header.Controls.Add(btnClose);
 
             var accentLine = new Panel
@@ -174,7 +194,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             pnlPowerDot = new Panel
             {
                 Size = new Size(8, 8),
-                Location = new Point(12, 27),
+                Location = new Point(36, 27),
                 BackColor = GreenOn
             };
             body.Controls.Add(pnlPowerDot);
@@ -185,7 +205,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 AutoSize = true,
                 Font = new Font("Segoe UI", 6.7f),
                 ForeColor = WhiteSoft,
-                Location = new Point(26, 24),
+                Location = new Point(50, 24),
                 BackColor = NavyBody
             };
             body.Controls.Add(lblPower);
@@ -194,17 +214,17 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             {
                 Text = "On",
                 AutoSize = true,
-                Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 6.7f, FontStyle.Bold),
                 ForeColor = GreenOn,
-                Location = new Point(64, 22),
+                Location = new Point(88, 24),
                 BackColor = NavyBody
             };
             body.Controls.Add(lblPowerValue);
 
             var divider = new Panel
             {
-                Location = new Point(8, 41),
-                Size = new Size(232, 1),
+                Location = new Point(8, 39),
+                Size = new Size(contentWidth, 1),
                 BackColor = Color.FromArgb(24, 49, 88)
             };
             body.Controls.Add(divider);
@@ -213,8 +233,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             {
                 Text = "Project Linker is on.",
                 AutoSize = false,
-                Size = new Size(230, 28),
-                Location = new Point(10, 48),
+                Size = new Size(contentWidth - 2, 24),
+                Location = new Point(10, 44),
                 Font = new Font("Segoe UI", 6.8f, FontStyle.Bold),
                 ForeColor = White,
                 BackColor = NavyBody
@@ -222,6 +242,52 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             body.Controls.Add(lblStatus);
 
             ResumeLayout(false);
+        }
+
+        private PictureBox CreateLogoPictureBox()
+        {
+            Image logoImage = TryLoadLogoImage();
+            if (logoImage == null)
+                return null;
+
+            var pictureBox = new PictureBox
+            {
+                Image = logoImage,
+                BackColor = Color.Transparent,
+                Location = new Point(8, 10),
+                Size = new Size(20, 20),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                TabStop = false
+            };
+
+            pictureBox.MouseDown += Header_MouseDown;
+            return pictureBox;
+        }
+
+        private Image TryLoadLogoImage()
+        {
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string[] candidates =
+            {
+                Path.Combine(baseDirectory, @"..\..\..\AJSetup\short.png"),
+                Path.Combine(baseDirectory, @"..\..\AJSetup\short.png"),
+                Path.Combine(baseDirectory, @"AJSetup\short.png")
+            };
+
+            foreach (string candidate in candidates)
+            {
+                try
+                {
+                    string fullPath = Path.GetFullPath(candidate);
+                    if (File.Exists(fullPath))
+                        return Image.FromFile(fullPath);
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
         }
 
         private void Header_MouseDown(object sender, MouseEventArgs e)

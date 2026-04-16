@@ -339,17 +339,13 @@ namespace AJSetup
                 });
                 if (!ok) throw new Exception("Files did not install correctly.");
 
-                // Step 5: Register VSTO
+                // Step 5: Finalize Project registration.
+                // The MSI writes the add-in registration into the 32-bit registry view.
+                // On 64-bit Project we also need the 64-bit view populated or the ribbon
+                // will never appear even though the files are installed correctly.
                 SetStatus("Registering with Microsoft Project...");
-                string vstoInstaller = GetVstoInstallerPath();
-                var vsto = new Process();
-                vsto.StartInfo.FileName = vstoInstaller;
-                vsto.StartInfo.Arguments = $"/i \"{vstoTarget}\"";
-                vsto.StartInfo.UseShellExecute = true;
-                vsto.Start();
-                await Task.Run(() => vsto.WaitForExit());
-                if (vsto.ExitCode != 0)
-                    throw new Exception($"VSTO registration failed with exit code {vsto.ExitCode}.");
+                await Task.Run(() => EnsureProjectAddInRegistration(vstoTarget));
+                await Task.Run(() => TryRegisterWithVstoInstaller(vstoTarget));
 
                 string successMsg = _isUpdateMode
                     ? $"Successfully Updated{(_updateVersion != null ? " to v" + _updateVersion : "")}!"
@@ -577,6 +573,56 @@ namespace AJSetup
                 }
             }
             catch { }
+        }
+
+        private void EnsureProjectAddInRegistration(string vstoTarget)
+        {
+            string addInKeyPath = @"Software\Microsoft\Office\MS Project\Addins\ArianJahandarfardsAddIn";
+            string manifestValue = vstoTarget + "|vstolocal";
+
+            WriteProjectAddInRegistration(RegistryView.Registry32, addInKeyPath, manifestValue);
+
+            if (Environment.Is64BitOperatingSystem)
+                WriteProjectAddInRegistration(RegistryView.Registry64, addInKeyPath, manifestValue);
+        }
+
+        private void WriteProjectAddInRegistration(
+            RegistryView view,
+            string addInKeyPath,
+            string manifestValue)
+        {
+            var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using (var addInKey = baseKey.CreateSubKey(addInKeyPath))
+            {
+                if (addInKey == null)
+                    throw new Exception($"Could not create Project add-in registration in the {view} registry view.");
+
+                addInKey.SetValue("Description", "AJ Tools", RegistryValueKind.String);
+                addInKey.SetValue("FriendlyName", "AJ Tools", RegistryValueKind.String);
+                addInKey.SetValue("LoadBehavior", 3, RegistryValueKind.DWord);
+                addInKey.SetValue("Manifest", manifestValue, RegistryValueKind.String);
+            }
+        }
+
+        private void TryRegisterWithVstoInstaller(string vstoTarget)
+        {
+            try
+            {
+                string vstoInstaller = GetVstoInstallerPath();
+                var vsto = new Process();
+                vsto.StartInfo.FileName = vstoInstaller;
+                vsto.StartInfo.Arguments = $"/i \"{vstoTarget}\"";
+                vsto.StartInfo.UseShellExecute = true;
+                vsto.Start();
+                vsto.WaitForExit();
+
+                // A stale ClickOnce/VSTO subscription from a different install path
+                // can make this fail even when the machine-wide add-in registration
+                // is valid, so treat it as best-effort instead of fatal.
+            }
+            catch
+            {
+            }
         }
 
         private string GetVstoInstallerPath()

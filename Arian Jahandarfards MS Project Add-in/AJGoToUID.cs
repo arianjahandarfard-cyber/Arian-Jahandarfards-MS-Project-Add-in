@@ -1,4 +1,6 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Arian_Jahandarfards_MS_Project_Add_in;
 using MSProject = Microsoft.Office.Interop.MSProject;
 
@@ -6,52 +8,122 @@ namespace ArianJahandarfardsAddIn
 {
     public static class AJGoToUID
     {
-        public static string TryNavigate(string rawInput, bool searchAll)
+        public sealed class SearchResult
         {
+            public long UniqueId { get; set; }
+            public bool SearchAllOpenProjects { get; set; }
+            public bool ActiveProjectContainsUid { get; set; }
+            public string ValidationError { get; set; }
+            public List<string> FoundProjectNames { get; } = new List<string>();
+            public List<string> MissingProjectNames { get; } = new List<string>();
+
+            public bool HasValidationError => !string.IsNullOrWhiteSpace(ValidationError);
+            public bool FoundAnyMatch => FoundProjectNames.Count > 0;
+            public bool FoundEverywhere => SearchAllOpenProjects &&
+                                           FoundProjectNames.Count > 0 &&
+                                           MissingProjectNames.Count == 0;
+
+            public string BuildSummaryMessage()
+            {
+                if (!SearchAllOpenProjects)
+                    return string.Empty;
+
+                if (!FoundAnyMatch)
+                    return $"UID {UniqueId} was not found in any open project.";
+
+                var lines = new List<string>
+                {
+                    $"UID {UniqueId} was found in {FoundProjectNames.Count} of {FoundProjectNames.Count + MissingProjectNames.Count} open project(s).",
+                    string.Empty
+                };
+
+                if (FoundProjectNames.Count > 0)
+                {
+                    lines.Add("Found in:");
+                    lines.AddRange(FoundProjectNames.Select(name => "- " + name));
+                    lines.Add(string.Empty);
+                }
+
+                if (MissingProjectNames.Count > 0)
+                {
+                    lines.Add("Not found in:");
+                    lines.AddRange(MissingProjectNames.Select(name => "- " + name));
+                    lines.Add(string.Empty);
+                }
+
+                lines.Add(ActiveProjectContainsUid
+                    ? "Stayed on the active project and moved to the matching UID there."
+                    : "Stayed on the active project. The active project does not contain that UID.");
+
+                return string.Join(Environment.NewLine, lines);
+            }
+        }
+
+        public static SearchResult ExecuteSearch(string rawInput, bool searchAll)
+        {
+            var result = new SearchResult
+            {
+                SearchAllOpenProjects = searchAll
+            };
+
             if (string.IsNullOrWhiteSpace(rawInput))
-                return "Please enter a UniqueID.";
+            {
+                result.ValidationError = "Please enter a UniqueID.";
+                return result;
+            }
 
             rawInput = rawInput.Trim();
             if (!long.TryParse(rawInput, out long uid))
-                return "Invalid input. Enter a numeric UniqueID.";
+            {
+                result.ValidationError = "Invalid input. Enter a numeric UniqueID.";
+                return result;
+            }
+
+            result.UniqueId = uid;
 
             MSProject.Application app = GetApp();
             if (app == null)
-                return "Could not connect to MS Project.";
-
-            MSProject.Task foundTask = null;
-            MSProject.Project foundProj = null;
+            {
+                result.ValidationError = "Could not connect to MS Project.";
+                return result;
+            }
 
             if (searchAll)
             {
                 foreach (MSProject.Project proj in app.Projects)
                 {
-                    foundTask = FindUIDInProject(proj, uid);
-                    if (foundTask != null)
-                    {
-                        foundProj = proj;
-                        break;
-                    }
+                    if (proj == null)
+                        continue;
+
+                    string projectName = GetProjectDisplayName(proj);
+                    bool containsUid = FindUIDInProject(proj, uid) != null;
+
+                    if (containsUid)
+                        result.FoundProjectNames.Add(projectName);
+                    else
+                        result.MissingProjectNames.Add(projectName);
+
+                    if (IsSameProject(proj, app.ActiveProject))
+                        result.ActiveProjectContainsUid = containsUid;
                 }
+
+                if (result.ActiveProjectContainsUid)
+                    NavigateTo(app, app.ActiveProject, uid);
+
+                return result;
             }
-            else
+
+            MSProject.Task foundTask = FindUIDInProject(app.ActiveProject, uid);
+            if (foundTask != null)
             {
-                foundTask = FindUIDInProject(app.ActiveProject, uid);
-                if (foundTask != null)
-                    foundProj = app.ActiveProject;
+                result.ActiveProjectContainsUid = true;
+                result.FoundProjectNames.Add(GetProjectDisplayName(app.ActiveProject));
+                NavigateTo(app, app.ActiveProject, uid);
+                return result;
             }
 
-            if (foundTask == null)
-                return $"UID {uid} not found.";
-
-            NavigateTo(app, foundProj, uid);
-            return null;
-        }
-
-        public static bool ShouldPromptForAllProjects()
-        {
-            MSProject.Application app = GetApp();
-            return app != null && app.Projects.Count > 1;
+            result.ValidationError = $"UID {uid} not found.";
+            return result;
         }
 
         private static MSProject.Task FindUIDInProject(MSProject.Project proj, long uid)
@@ -64,7 +136,10 @@ namespace ArianJahandarfardsAddIn
                         return t;
                 }
             }
-            catch { }
+            catch
+            {
+            }
+
             return null;
         }
 
@@ -73,12 +148,14 @@ namespace ArianJahandarfardsAddIn
             MSProject.Project foundProj,
             long uid)
         {
-            if (foundProj.Name != app.ActiveProject.Name)
+            if (foundProj == null || app?.ActiveProject == null)
+                return;
+
+            if (!IsSameProject(foundProj, app.ActiveProject))
                 app.Projects[foundProj.Name].Activate();
 
             FullReset(app);
 
-            // Re-fetch task after reset — row index may have shifted
             MSProject.Task target = null;
             foreach (MSProject.Task t in app.ActiveProject.Tasks)
             {
@@ -89,12 +166,11 @@ namespace ArianJahandarfardsAddIn
                 }
             }
 
-            if (target == null) return;
+            if (target == null)
+                return;
 
-            // Jump by row index — reliable after full reset
             try { app.EditGoTo(ID: target.ID); } catch { }
 
-            // Follow up with Find to confirm selection
             try
             {
                 app.Find(
@@ -104,35 +180,73 @@ namespace ArianJahandarfardsAddIn
                     Next: true
                 );
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         private static void FullReset(MSProject.Application app)
         {
-            // 1. Clear named filter
             try { app.FilterApply(Name: "All Tasks"); } catch { }
             try { app.FilterApply(Name: "<No Filter>"); } catch { }
 
-            // 2. Clear group
             try { app.GroupApply(Name: "No Group"); } catch { }
             try { app.GroupApply(Name: "<No Group>"); } catch { }
 
-            // 3. Expand all collapsed outline levels
             try { app.OutlineShowAllTasks(); } catch { }
 
-            // 4. Reset AutoFilter column filters, preserve dropdown arrows
             try
             {
                 if (app.ActiveProject.AutoFilter)
                 {
-                    app.AutoFilter(); // off — clears column filter criteria
-                    app.AutoFilter(); // on  — restores dropdown arrows
+                    app.AutoFilter();
+                    app.AutoFilter();
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
-            // 5. Clear highlight filter
             try { app.FilterApply(Name: "All Tasks", Highlight: false); } catch { }
+        }
+
+        private static bool IsSameProject(MSProject.Project proj, MSProject.Project otherProj)
+        {
+            if (proj == null || otherProj == null)
+                return false;
+
+            string projIdentity = GetProjectIdentity(proj);
+            string otherIdentity = GetProjectIdentity(otherProj);
+
+            return string.Equals(projIdentity, otherIdentity, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetProjectIdentity(MSProject.Project proj)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(proj?.FullName))
+                    return proj.FullName;
+            }
+            catch
+            {
+            }
+
+            return GetProjectDisplayName(proj);
+        }
+
+        private static string GetProjectDisplayName(MSProject.Project proj)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(proj?.Name))
+                    return proj.Name;
+            }
+            catch
+            {
+            }
+
+            return "(Unnamed Project)";
         }
 
         private static MSProject.Application GetApp()

@@ -27,6 +27,17 @@ function Remove-AJProjectRegistryKeys {
     }
 }
 
+function Remove-AJProjectAddInData {
+    $addInDataKeys = @(
+        "HKCU:\Software\Microsoft\Office\MS Project\AddinsData\ArianJahandarfardsAddIn",
+        "HKCU:\Software\Microsoft\Office\MS Project\AddinsData\Arian Jahandarfards MS Project Add-in"
+    )
+
+    foreach ($key in $addInDataKeys) {
+        Remove-Item -Path $key -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Remove-AJCurrentUserUninstallEntries {
     $uninstallRoot = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Uninstall", $true)
     if ($null -eq $uninstallRoot) {
@@ -134,6 +145,7 @@ function Remove-AJVstoSecurity {
 
 Ensure-Elevated
 
+$installedManifest = "C:\Program Files (x86)\AJTools\Arian Jahandarfards MS Project Add-in.vsto|vstolocal"
 $installedMachineKeys = @(
     "HKLM:\SOFTWARE\Microsoft\Office\MS Project\Addins\ArianJahandarfardsAddIn",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\MS Project\Addins\ArianJahandarfardsAddIn"
@@ -144,18 +156,24 @@ if (Get-Process WINPROJ -ErrorAction SilentlyContinue) {
 }
 
 Remove-AJProjectRegistryKeys
+Remove-AJProjectAddInData
 Remove-AJVstoMetadata
 Remove-AJVstoSecurity
 Remove-AJCurrentUserUninstallEntries
 
 foreach ($machineKey in $installedMachineKeys) {
-    if (Test-Path $machineKey) {
-        try {
-            Set-ItemProperty -Path $machineKey -Name "LoadBehavior" -Type DWord -Value 3
+    try {
+        if (-not (Test-Path $machineKey)) {
+            New-Item -Path $machineKey -Force | Out-Null
         }
-        catch {
-            Write-Warning "Could not restore machine-wide add-in registration at $machineKey"
-        }
+
+        Set-ItemProperty -Path $machineKey -Name "Description" -Type String -Value "AJ Tools"
+        Set-ItemProperty -Path $machineKey -Name "FriendlyName" -Type String -Value "AJ Tools"
+        Set-ItemProperty -Path $machineKey -Name "LoadBehavior" -Type DWord -Value 3
+        Set-ItemProperty -Path $machineKey -Name "Manifest" -Type String -Value $installedManifest
+    }
+    catch {
+        Write-Warning "Could not restore machine-wide add-in registration at $machineKey"
     }
 }
 

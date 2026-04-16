@@ -17,7 +17,7 @@
     <PublishUrl>publish\</PublishUrl>
     <InstallUrl />
     <TargetCulture>en</TargetCulture>
-    <ApplicationVersion>3.0.0.0</ApplicationVersion>
+    <ApplicationVersion>3.0.0.2</ApplicationVersion>
     <AutoIncrementApplicationRevision>false</AutoIncrementApplicationRevision>
     <UpdateEnabled>true</UpdateEnabled>
     <UpdateInterval>7</UpdateInterval>
@@ -121,8 +121,19 @@
     <Compile Include="AJAutoIndicator.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="AnimatedBarRenderer.cs" />
     <Compile Include="AJAutoIndicator.Designer.cs">
       <DependentUpon>AJAutoIndicator.cs</DependentUpon>
+    </Compile>
+    <Compile Include="AJDynamicStatusMessageForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AJDynamicStatusProgressForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AJDynamicStatusService.cs" />
+    <Compile Include="AJDynamicStatusWorkbookPickerForm.cs">
+      <SubType>Form</SubType>
     </Compile>
     <Compile Include="AJGoToUID.cs" />
     <Compile Include="AJMilestoneTracker.cs" />
@@ -218,6 +229,17 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="RELEASE_NOTES.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="DynamicStatusVba\frmSimOptions.frm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="DynamicStatusVba\Module2.bas">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="DynamicStatusVba\Module4.bas">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\link %282%29.png" />

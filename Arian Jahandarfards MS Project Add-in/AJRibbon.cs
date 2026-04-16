@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Threading.Tasks;
 using ArianJahandarfardsAddIn;
 using Microsoft.Office.Tools.Ribbon;
@@ -8,6 +9,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
     public partial class AJRibbon : RibbonBase
     {
         private AJMilestoneTracker Tracker => Globals.ThisAddIn._tracker;
+        private const string DynamicStatusButtonLabel = "Create Dynamic Status Sheet 2.5";
         private const string YellowOption = "Yellow";
         private const string GreenOption = "Green";
         private const string BlueOption = "Blue";
@@ -17,6 +19,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private void AJRibbon_Load(object sender, RibbonUIEventArgs e)
         {
+            btnDynamicStatusSheet.Label = DynamicStatusButtonLabel;
+            btnDynamicStatusSheet.Image = CreateDynamicStatusIcon();
+            btnDynamicStatusSheet.ShowImage = true;
             ConfigureHighlighterSwatches();
             ApplyHighlighterSelection(null);
         }
@@ -47,6 +52,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             var frm = new frmGoToUID();
             frm.ShowDialog();
         }
+
+        private void btnDynamicStatusSheet_Click(object sender, RibbonControlEventArgs e) =>
+            AJDynamicStatusService.Launch();
 
         private void btnProjectLinkerExcel_Click(object sender, RibbonControlEventArgs e) =>
             Globals.ThisAddIn._projectLinker?.ActivateMode(AJProjectLinkerMode.Excel);
@@ -127,6 +135,63 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
 
             return bitmap;
+        }
+
+        private Image CreateDynamicStatusIcon()
+        {
+            var bitmap = new Bitmap(32, 32);
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            using (var pageBrush = new SolidBrush(Color.White))
+            using (var pageBorder = new Pen(Color.FromArgb(45, 90, 160), 2f))
+            using (var foldBrush = new SolidBrush(Color.FromArgb(225, 238, 250)))
+            using (var accentBrush = new SolidBrush(Color.FromArgb(55, 170, 95)))
+            using (var linePen = new Pen(Color.FromArgb(180, 205, 228), 1.5f))
+            {
+                graphics.Clear(Color.Transparent);
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+                var pageBounds = new RectangleF(5, 3, 20, 24);
+                using (GraphicsPath pagePath = CreateRoundedRectanglePath(pageBounds, 3f))
+                {
+                    graphics.FillPath(pageBrush, pagePath);
+                    graphics.DrawPath(pageBorder, pagePath);
+                }
+
+                PointF[] fold =
+                {
+                    new PointF(19, 3),
+                    new PointF(25, 3),
+                    new PointF(25, 9)
+                };
+                graphics.FillPolygon(foldBrush, fold);
+                graphics.DrawLine(pageBorder, 19, 3, 25, 9);
+                graphics.DrawLine(pageBorder, 25, 3, 25, 9);
+
+                graphics.FillRectangle(accentBrush, 9, 10, 12, 3);
+                graphics.DrawLine(linePen, 9, 16, 21, 16);
+                graphics.DrawLine(linePen, 9, 19, 21, 19);
+                graphics.DrawLine(linePen, 9, 22, 17, 22);
+
+                graphics.FillEllipse(accentBrush, 21, 18, 8, 8);
+                graphics.DrawEllipse(new Pen(Color.White, 1.5f), 23.5f, 20.5f, 3, 3);
+                graphics.DrawLine(new Pen(Color.White, 1.5f), 27, 24, 29.5f, 26.5f);
+            }
+
+            return bitmap;
+        }
+
+        private GraphicsPath CreateRoundedRectanglePath(RectangleF bounds, float radius)
+        {
+            float diameter = radius * 2f;
+            var path = new GraphicsPath();
+
+            path.AddArc(bounds.X, bounds.Y, diameter, diameter, 180, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Y, diameter, diameter, 270, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(bounds.X, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+
+            return path;
         }
 
         private string GetHighlighterLabel(string optionName, string selectedOption)

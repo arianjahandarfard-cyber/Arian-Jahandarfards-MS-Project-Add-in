@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Arian_Jahandarfards_MS_Project_Add_in;
 
 namespace ArianJahandarfardsAddIn
 {
@@ -290,20 +291,19 @@ namespace ArianJahandarfardsAddIn
                 SetStyle(ControlStyles.OptimizedDoubleBuffer |
                          ControlStyles.AllPaintingInWmPaint |
                          ControlStyles.UserPaint, true);
+                AnimatedBarRenderer.EnableDoubleBuffer(this);
                 _timer = new System.Windows.Forms.Timer();
                 _timer.Interval = 16;
                 _timer.Tick += (s, e) =>
                 {
-                    _offset += 6f;
-                    if (_offset > Width + SegmentWidth)
-                        _offset = -SegmentWidth;
+                    _offset = AnimatedBarRenderer.AdvanceOffset(_offset, 6f, Math.Max(1, Width));
                     Invalidate();
                 };
             }
 
             public void StartAnimation()
             {
-                _offset = -SegmentWidth;
+                _offset = 0f;
                 _timer.Start();
             }
 
@@ -311,25 +311,13 @@ namespace ArianJahandarfardsAddIn
 
             protected override void OnPaint(PaintEventArgs e)
             {
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using (var bg = new SolidBrush(Color.FromArgb(220, 220, 220)))
-                    g.FillRectangle(bg, 0, 0, Width, Height);
-
-                int segmentLeft = (int)_offset;
-                int visibleLeft = Math.Max(0, segmentLeft);
-                int visibleRight = Math.Min(Width, segmentLeft + SegmentWidth);
-                int visibleWidth = visibleRight - visibleLeft;
-
-                if (visibleWidth <= 0)
-                    return;
-
-                using (var brush = new LinearGradientBrush(
-                    new Rectangle(segmentLeft, 0, SegmentWidth, Height),
-                    NavyColor, AccentColor, LinearGradientMode.Horizontal))
-                {
-                    g.FillRectangle(brush, visibleLeft, 0, visibleWidth, Height);
-                }
+                AnimatedBarRenderer.DrawSeamlessFillBar(
+                    e.Graphics,
+                    ClientRectangle,
+                    Color.FromArgb(220, 220, 220),
+                    AccentColor,
+                    _offset,
+                    Math.Max(0.18f, Math.Min(0.45f, Width == 0 ? 0.3f : (float)SegmentWidth / Width)));
             }
         }
     }

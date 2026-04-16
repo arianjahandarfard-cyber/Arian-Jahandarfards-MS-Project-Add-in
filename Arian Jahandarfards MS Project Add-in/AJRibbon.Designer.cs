@@ -37,6 +37,7 @@
             this.group2 = this.Factory.CreateRibbonGroup();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
             this.group3 = this.Factory.CreateRibbonGroup();
+            this.btnDynamicStatusSheet = this.Factory.CreateRibbonButton();
             this.menuProjectLinker = this.Factory.CreateRibbonMenu();
             this.btnProjectLinkerExcel = this.Factory.CreateRibbonButton();
             this.btnProjectLinkerBoth = this.Factory.CreateRibbonButton();
@@ -160,9 +161,19 @@
             // 
             // group3
             // 
+            this.group3.Items.Add(this.btnDynamicStatusSheet);
             this.group3.Items.Add(this.menuProjectLinker);
             this.group3.Label = "Status Tools";
             this.group3.Name = "group3";
+            // 
+            // btnDynamicStatusSheet
+            // 
+            this.btnDynamicStatusSheet.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
+            this.btnDynamicStatusSheet.Label = "Create Dynamic Status Sheet 2.5";
+            this.btnDynamicStatusSheet.Name = "btnDynamicStatusSheet";
+            this.btnDynamicStatusSheet.ScreenTip = "Create a dynamic status sheet from an open Excel workbook";
+            this.btnDynamicStatusSheet.ShowImage = true;
+            this.btnDynamicStatusSheet.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnDynamicStatusSheet_Click);
             // 
             // menuProjectLinker
             // 
@@ -305,6 +316,7 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup Update;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnCheckUpdates;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group3;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnDynamicStatusSheet;
         internal Microsoft.Office.Tools.Ribbon.RibbonMenu menuProjectLinker;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerExcel;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnProjectLinkerBoth;

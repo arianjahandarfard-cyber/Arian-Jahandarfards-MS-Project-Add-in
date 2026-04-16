@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using MSProject = Microsoft.Office.Interop.MSProject;
@@ -32,7 +31,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             cboDate.Text = GetSetting("DateField", "Date9");
             cboStartDate.Text = GetSetting("StartDateField", "Date7");
             cboNumber.Text = GetSetting("DurationField", "Number11");
-
+            AnimatedBarRenderer.EnableDoubleBuffer(this);
+            AnimatedBarRenderer.EnableDoubleBuffer(pnlSeparator);
             pnlSeparator.Paint += PnlSeparator_Paint;
 
             _lineTimer = new Timer();
@@ -43,41 +43,19 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private void LineTimer_Tick(object sender, EventArgs e)
         {
-            _offset += 1.5f;
-            if (_offset > pnlSeparator.Width) _offset = 0f;
+            _offset = AnimatedBarRenderer.AdvanceOffset(_offset, 1.5f, pnlSeparator.Width);
             pnlSeparator.Invalidate();
         }
 
         private void PnlSeparator_Paint(object sender, PaintEventArgs e)
         {
             var panel = (Panel)sender;
-            int w = panel.Width;
-            int h = panel.Height;
-
-            e.Graphics.Clear(Color.FromArgb(1, 44, 100));
-
-            int highlightWidth = w / 3;
-            int x = (int)_offset - highlightWidth;
-            var rect = new Rectangle(x, 0, highlightWidth * 2, h);
-            if (rect.Width <= 0) return;
-
-            using (var brush = new LinearGradientBrush(
-                rect,
-                Color.FromArgb(0, 1, 44, 100),
-                Color.FromArgb(255, 0, 146, 231),
-                LinearGradientMode.Horizontal))
-            {
-                var blend = new ColorBlend(3);
-                blend.Colors = new Color[]
-                {
-                    Color.FromArgb(0, 1, 44, 100),
-                    Color.FromArgb(255, 0, 146, 231),
-                    Color.FromArgb(0, 1, 44, 100)
-                };
-                blend.Positions = new float[] { 0f, 0.5f, 1f };
-                brush.InterpolationColors = blend;
-                e.Graphics.FillRectangle(brush, rect);
-            }
+            AnimatedBarRenderer.DrawSeamlessFillBar(
+                e.Graphics,
+                panel.ClientRectangle,
+                Color.FromArgb(1, 44, 100),
+                Color.FromArgb(0, 146, 231),
+                _offset);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

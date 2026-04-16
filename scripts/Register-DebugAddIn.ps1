@@ -53,24 +53,150 @@ function Remove-AJProjectRegistryKeys {
     }
 }
 
+function Remove-AJDeploymentCacheEntries {
+    $deploymentRoot = "HKCU:\Software\Classes\Software\Microsoft\Windows\CurrentVersion\Deployment\SideBySide\2.0"
+    if (-not (Test-Path $deploymentRoot)) {
+        return
+    }
+
+    Get-ChildItem -Path $deploymentRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            $item = Get-Item $_.PSPath -ErrorAction Stop
+            foreach ($valueName in @($item.GetValueNames())) {
+                $value = $item.GetValue($valueName)
+                $text = if ($value -is [byte[]]) {
+                    [System.Text.Encoding]::ASCII.GetString($value)
+                }
+                else {
+                    [string]$value
+                }
+
+                if ($valueName -like "*39fa0b18c70af9b9*" -or
+                    $valueName -like "*Arian*" -or
+                    $text -like "*39fa0b18c70af9b9*" -or
+                    $text -like "*Arian*Project*Add-in*" -or
+                    $text -like "*bin/Debug*" -or
+                    $text -like "*bin/Release*") {
+                    $item.DeleteValue($valueName, $false)
+                }
+            }
+        }
+        catch {
+        }
+    }
+
+    $targets = Get-ChildItem -Path $deploymentRoot -Recurse -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -like "*39fa0b18c70af9b9*" -or
+        $_.PSChildName -like "*39fa0b18c70af9b9*" -or
+        $_.Name -like "*aria..*" -or
+        $_.PSChildName -like "*aria..*" -or
+        $_.Name -like "*Arian*" -or
+        $_.PSChildName -like "*Arian*"
+    }
+
+    foreach ($item in $targets | Sort-Object { $_.Name.Length } -Descending) {
+        try {
+            Remove-Item -LiteralPath $item.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+}
+
+function Remove-AJClickOnceCacheFiles {
+    $appsRoot = Join-Path $env:LOCALAPPDATA "Apps\2.0"
+    if (-not (Test-Path $appsRoot)) {
+        return
+    }
+
+    $targets = Get-ChildItem -Path $appsRoot -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -like "aria..vsto_39fa0b18c70af9b9*" -or
+        $_.FullName -like "*Arian*Jahandarfards*MS*Project*Add-in*"
+    }
+
+    foreach ($item in $targets | Sort-Object { $_.FullName.Length } -Descending) {
+        try {
+            if ($item.PSIsContainer) {
+                Remove-Item -LiteralPath $item.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            else {
+                Remove-Item -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+        }
+    }
+}
+
+function Convert-ManifestPathToVstoLocalUri {
+    param(
+        [string]$ManifestPath
+    )
+
+    return ([System.Uri]$ManifestPath).AbsoluteUri + "|vstolocal"
+}
+
+function Remove-AJProjectAddInData {
+    $addInDataKeys = @(
+        "HKCU:\Software\Microsoft\Office\MS Project\AddinsData\ArianJahandarfardsAddIn",
+        "HKCU:\Software\Microsoft\Office\MS Project\AddinsData\Arian Jahandarfards MS Project Add-in"
+    )
+
+    foreach ($key in $addInDataKeys) {
+        Remove-Item -Path $key -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Register-DebugProjectAddInKey {
     param(
         [string]$ManifestPath
     )
 
-    $addInRoot = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\Microsoft\Office\MS Project\Addins\Arian Jahandarfards MS Project Add-in")
+    $manifestValue = Convert-ManifestPathToVstoLocalUri -ManifestPath $ManifestPath
+
+    $addInRoot = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Software\Microsoft\Office\MS Project\Addins\ArianJahandarfardsAddIn")
     if ($null -eq $addInRoot) {
         throw "Could not create the Project add-in registration key for debug mode."
     }
 
     try {
-        $addInRoot.SetValue("Description", "Arian Jahandarfards MS Project Add-in", [Microsoft.Win32.RegistryValueKind]::String)
-        $addInRoot.SetValue("FriendlyName", "Arian Jahandarfards MS Project Add-in", [Microsoft.Win32.RegistryValueKind]::String)
+        $addInRoot.SetValue("Description", "AJ Tools", [Microsoft.Win32.RegistryValueKind]::String)
+        $addInRoot.SetValue("FriendlyName", "AJ Tools", [Microsoft.Win32.RegistryValueKind]::String)
         $addInRoot.SetValue("LoadBehavior", 3, [Microsoft.Win32.RegistryValueKind]::DWord)
-        $addInRoot.SetValue("Manifest", "$ManifestPath|vstolocal", [Microsoft.Win32.RegistryValueKind]::String)
+        $addInRoot.SetValue("Manifest", $manifestValue, [Microsoft.Win32.RegistryValueKind]::String)
     }
     finally {
         $addInRoot.Close()
+    }
+}
+
+function Trust-DebugManifestPublisher {
+    param(
+        [string]$ManifestPath
+    )
+
+    [xml]$manifestXml = Get-Content -Path $ManifestPath -Raw
+    $namespaceManager = New-Object System.Xml.XmlNamespaceManager($manifestXml.NameTable)
+    $namespaceManager.AddNamespace("ds", "http://www.w3.org/2000/09/xmldsig#")
+
+    $certificateNode = $manifestXml.SelectSingleNode("//ds:X509Certificate", $namespaceManager)
+    if ($null -eq $certificateNode -or [string]::IsNullOrWhiteSpace($certificateNode.InnerText)) {
+        throw "Could not find the signing certificate in the VSTO manifest: $ManifestPath"
+    }
+
+    $certificateBytes = [System.Convert]::FromBase64String($certificateNode.InnerText)
+    $certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @(,$certificateBytes)
+    $tempCertificatePath = Join-Path $env:TEMP "AJTools-DebugPublisher.cer"
+
+    try {
+        [System.IO.File]::WriteAllBytes($tempCertificatePath, $certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+
+        if (-not (Get-ChildItem "Cert:\CurrentUser\TrustedPublisher" | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
+            Import-Certificate -FilePath $tempCertificatePath -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
+        }
+    }
+    finally {
+        Remove-Item -Path $tempCertificatePath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -219,10 +345,14 @@ foreach ($machineKey in $installedMachineKeys) {
 }
 
 Remove-AJProjectRegistryKeys
+Remove-AJProjectAddInData
 Remove-AJVstoMetadata
 Remove-AJVstoSecurity
 Remove-AJCurrentUserUninstallEntries
+Remove-AJDeploymentCacheEntries
+Remove-AJClickOnceCacheFiles
 
+Trust-DebugManifestPublisher -ManifestPath $vstoPath
 Register-DebugProjectAddInKey -ManifestPath $vstoPath
 
 Write-Host ""

@@ -5,6 +5,8 @@ using System.IO;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Newtonsoft.Json;
+using Excel = Microsoft.Office.Interop.Excel;
 using MSProject = Microsoft.Office.Interop.MSProject;
 
 namespace Arian_Jahandarfards_MS_Project_Add_in
@@ -19,9 +21,11 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
     public class AJProjectLinker : IDisposable
     {
         private readonly MSProject.Application _app;
-        private readonly Timer _pollTimer;
-        private readonly string _logPath;
-        private readonly object _logSync = new object();
+        private readonly Timer _heartbeatTimer;
+        private readonly string _configPath;
+        private readonly string _diagnosticsPath;
+        private readonly object _diagnosticsSync = new object();
+        private readonly bool _diagnosticsEnabled = false;
 
         private AJProjectLinkerForm _form;
         private bool _isSyncing;
@@ -35,20 +39,32 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private bool _highlightEnabled;
         private Color _highlightColor = Color.FromArgb(255, 235, 59);
         private ExcelHighlightState _activeExcelHighlight;
-        private int _activeProjectHighlightUid = -1;
+        private ProjectHighlightState _activeProjectHighlight;
         private string _currentHighlightWorkbookName = string.Empty;
         private string _currentHighlightSheetName = string.Empty;
         private int _currentHighlightRow = -1;
         private int _currentHighlightProjectUid = -1;
+        private ExcelSheetIndex _sheetIndexCache;
+        private Excel.Application _excelApp;
+        private int _excelAppHwnd;
+        private DateTime _ignoreExcelSelectionEventsUntilUtc = DateTime.MinValue;
+        private ProjectLinkerMatchConfiguration _matchConfiguration;
+        private bool _needsMatchConfigurationPrompt;
 
         public AJProjectLinker(MSProject.Application app)
         {
             _app = app;
-            _logPath = Path.Combine(
+            string configDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "AJTools");
+            Directory.CreateDirectory(configDirectory);
+            _configPath = Path.Combine(configDirectory, "AJProjectLinkerMatchConfig.json");
+            _diagnosticsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "AJProjectLinker.log");
-            _pollTimer = new Timer { Interval = 350 };
-            _pollTimer.Tick += PollTimer_Tick;
+                "AJProjectLinker.Diagnostics.log");
+            _matchConfiguration = LoadMatchConfiguration();
+            _heartbeatTimer = new Timer { Interval = 8000 };
+            _heartbeatTimer.Tick += HeartbeatTimer_Tick;
             _app.WindowSelectionChange += App_WindowSelectionChange;
             Log("Project Linker started.");
         }
@@ -62,35 +78,32 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
 
             _mode = mode;
-            EnsurePanel();
+            HidePanel();
             ResetTracking();
-            _form.SetModeText(GetModeDisplayText(mode));
-            _form.SetLinkState(true);
-            UpdateStatusText();
+            ResetDiagnosticsSession(mode);
             Log($"Mode changed to {GetModeDisplayText(mode)}.");
-            _pollTimer.Start();
+            var excelApp = EnsureExcelBinding();
+            _needsMatchConfigurationPrompt = true;
+            TryPromptForMatchConfiguration(excelApp, forceShow: true);
+            _heartbeatTimer.Start();
         }
 
         public void SetHighlighterEnabled(bool enabled)
         {
             _highlightEnabled = enabled;
+            TraceDiagnostic($"HIGHLIGHTER enabled={enabled}, currentUid={_currentHighlightProjectUid}, currentExcelRow={_currentHighlightRow}.");
             Log(enabled ? "Highlighter enabled." : "Highlighter disabled.");
 
-            if (!enabled)
-            {
-                ClearHighlights();
-                return;
-            }
-
-            RefreshHighlights();
+            ResetHighlighterState(clearVisuals: true);
         }
 
         public void SetHighlighterColor(Color color)
         {
             _highlightColor = color;
             _highlightEnabled = true;
+            TraceDiagnostic($"HIGHLIGHTER color={color.R},{color.G},{color.B}, currentUid={_currentHighlightProjectUid}, currentExcelRow={_currentHighlightRow}.");
             Log($"Highlighter color set to {color.R},{color.G},{color.B}.");
-            RefreshHighlights();
+            ResetHighlighterState(clearVisuals: true);
         }
 
         public void ShowPanel()
@@ -99,23 +112,24 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             UpdateStatusText();
         }
 
-        private void PollTimer_Tick(object sender, EventArgs e)
+        private void HeartbeatTimer_Tick(object sender, EventArgs e)
         {
-            if (_isSyncing || _mode == AJProjectLinkerMode.Off)
+            if (_mode == AJProjectLinkerMode.Off)
                 return;
 
             try
             {
-                dynamic excelApp = TryGetRunningExcel();
-                if (excelApp == null)
+                if (_excelApp != null && !_needsMatchConfigurationPrompt)
+                    return;
+
+                Excel.Application excelApp = EnsureExcelBinding();
+                if (_excelApp == null)
                 {
                     SetStatus("Open Excel to start linking.");
                     return;
                 }
 
-                if (_mode == AJProjectLinkerMode.Excel || _mode == AJProjectLinkerMode.ExcelAndProject)
-                    SyncExcelToProject(excelApp);
-
+                TryPromptForMatchConfiguration(excelApp, forceShow: false);
             }
             catch
             {
@@ -130,8 +144,6 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
             try
             {
-                Log($"WindowSelectionChange fired: caption={SafeWindowCaption(Window)}, selType={SafeToString(selType)}.");
-
                 if (DateTime.UtcNow < _suppressProjectToExcelUntilUtc)
                 {
                     Log("Project -> Excel suppressed because Excel initiated the latest navigation.");
@@ -144,7 +156,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                     return;
                 }
 
-                dynamic excelApp = TryGetRunningExcel();
+                var excelApp = EnsureExcelBinding();
                 if (excelApp == null)
                     return;
 
@@ -155,11 +167,73 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private void SyncExcelToProject(dynamic excelApp)
+        private void ExcelApp_SheetSelectionChange(object sh, Excel.Range target)
         {
-            var context = GetExcelContext(excelApp);
+            if (_isSyncing || _mode == AJProjectLinkerMode.Off)
+                return;
+
+            if (_mode != AJProjectLinkerMode.Excel && _mode != AJProjectLinkerMode.ExcelAndProject)
+                return;
+
+            if (DateTime.UtcNow < _ignoreExcelSelectionEventsUntilUtc)
+            {
+                Log("Excel -> Project ignored because Excel selection was changed internally.");
+                return;
+            }
+
+            try
+            {
+                var worksheet = sh as Excel.Worksheet;
+                if (worksheet == null)
+                    return;
+
+                var context = GetExcelContext(_excelApp, worksheet, target);
+                if (context == null)
+                    return;
+
+                SyncExcelToProject(context);
+            }
+            catch (Exception ex)
+            {
+                Log($"Excel SheetSelectionChange failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private void ExcelApp_SheetActivate(object sh)
+        {
+            InvalidateSheetIndex("Excel sheet activated.");
+        }
+
+        private void ExcelApp_SheetChange(object sh, Excel.Range target)
+        {
+            InvalidateSheetIndex("Excel sheet contents changed.");
+        }
+
+        private void ExcelApp_WorkbookActivate(Excel.Workbook wb)
+        {
+            InvalidateSheetIndex("Excel workbook activated.");
+        }
+
+        private void ExcelApp_WorkbookOpen(Excel.Workbook wb)
+        {
+            InvalidateSheetIndex("Excel workbook opened.");
+        }
+
+        private void ExcelApp_WorkbookBeforeClose(Excel.Workbook wb, ref bool cancel)
+        {
+            InvalidateSheetIndex("Excel workbook closing.");
+        }
+
+        private void SyncExcelToProject(ExcelContext context)
+        {
             if (context == null || context.Row < 1)
                 return;
+
+            if (!EnsureMatchConfiguration(context, forceShow: false))
+            {
+                SetStatus("Set the Excel match columns, then click the task again.");
+                return;
+            }
 
             string selectionKey = $"{context.WorkbookName}|{context.SheetName}|{context.Row}";
             if (selectionKey == _lastExcelSelectionKey)
@@ -167,10 +241,13 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
             _lastExcelSelectionKey = selectionKey;
             Log($"Excel selection changed: workbook={context.WorkbookName}, sheet={context.SheetName}, row={context.Row}, activeText={context.ActiveCellText}.");
+            Log($"Excel context: headerRow={context.HeaderRow}, firstDataRow={context.FirstDataRow}, activeColumn={context.Column}, usedRows={context.UsedRows}, usedColumns={context.UsedColumns}.");
+            TraceDiagnostic($"EXCEL_CLICK cell={GetColumnLabel(context.Column)}{context.Row}, row={context.Row}, uidColumn={GetColumnLabel(GetEffectiveMatchConfiguration(context).UniqueIdColumn)}, activeText=\"{Shorten(context.ActiveCellText)}\".");
 
             var match = FindProjectTaskForExcelRow(context);
             if (match == null)
             {
+                TraceDiagnostic($"EXCEL_RESULT row={context.Row}, expectedUid=<none>, finalProjectUid={GetCurrentProjectUidText()}, success=False, reason=no-match.");
                 Log($"Excel -> Project: no matching Project task found for Excel row {context.Row}.");
                 SetStatus($"No task match was found for Excel row {context.Row}.");
                 return;
@@ -179,14 +256,30 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _isSyncing = true;
             try
             {
-                NavigateToProjectTask(match.Task);
-                _lastProjectUid = match.Task.UniqueID;
-                _lastObservedProjectUid = match.Task.UniqueID;
-                _suppressProjectToExcelUntilUtc = DateTime.UtcNow.AddMilliseconds(1200);
-                UpdateCurrentHighlightTarget(context, context.Row, match.Task);
-                ApplyHighlights(context, context.Row, match.Task);
-                Log($"Excel -> Project: row {context.Row} matched Project task UID {match.Task.UniqueID} ({match.Task.Name}).");
-                SetStatus($"Excel row {context.Row} is linked to UID {match.Task.UniqueID}.");
+                TraceDiagnostic($"EXCEL_RESOLVE row={context.Row}, expectedUid={match.UniqueId}, expectedName=\"{Shorten(match.TaskName)}\".");
+                Log($"Excel -> Project match details: row={context.Row}, matchedUid={match.UniqueId}, matchedName={match.TaskName}, matchText={match.MatchText}.");
+                var focusResult = FocusProjectTask(match.UniqueId, suppressSelectionEvents: false, reason: "Excel -> Project navigation", logFailures: true);
+                if (!focusResult.Success)
+                {
+                    string actualUidText = focusResult.SelectedTask == null
+                        ? "none"
+                        : focusResult.SelectedTask.UniqueID.ToString(CultureInfo.InvariantCulture);
+                    string actualNameText = focusResult.SelectedTask?.Name ?? "<none>";
+
+                    TraceDiagnostic($"EXCEL_RESULT row={context.Row}, expectedUid={match.UniqueId}, finalProjectUid={actualUidText}, finalProjectName=\"{Shorten(actualNameText)}\", success=False, reason=focus-failed.");
+                    Log($"Excel -> Project focus failed: expectedUid={match.UniqueId}, actualUid={actualUidText}, actualName={actualNameText}, source={focusResult.SelectionSource}.");
+                    SetStatus($"Excel row {context.Row} matched UID {match.UniqueId}, but Project stayed on UID {actualUidText}.");
+                    return;
+                }
+
+                _lastProjectUid = focusResult.SelectedTask.UniqueID;
+                _lastObservedProjectUid = focusResult.SelectedTask.UniqueID;
+                _suppressProjectToExcelUntilUtc = DateTime.UtcNow.AddMilliseconds(350);
+                UpdateCurrentHighlightTarget(context, context.Row, focusResult.SelectedTask);
+                ApplyHighlights(context, context.Row, focusResult);
+                TraceDiagnostic($"EXCEL_RESULT row={context.Row}, expectedUid={match.UniqueId}, finalProjectUid={GetCurrentProjectUidText()}, finalProjectName=\"{Shorten(GetCurrentProjectName())}\", success={string.Equals(GetCurrentProjectUidText(), match.UniqueId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}.");
+                Log($"Excel -> Project: row {context.Row} matched Project task UID {focusResult.SelectedTask.UniqueID} ({focusResult.SelectedTask.Name}).");
+                SetStatus($"Excel row {context.Row} is linked to UID {focusResult.SelectedTask.UniqueID}.");
             }
             finally
             {
@@ -194,7 +287,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private void SyncProjectToExcelIfNeeded(dynamic excelApp, MSProject.Selection selection = null, MSProject.Window window = null)
+        private void SyncProjectToExcelIfNeeded(Excel.Application excelApp, MSProject.Selection selection = null, MSProject.Window window = null)
         {
             string source;
             MSProject.Task activeTask = TryGetActiveTask(selection, window, out source);
@@ -206,6 +299,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
 
             LogProjectDetectionOnce($"Project -> Excel candidate: source={source}, UID={activeTask.UniqueID}, Name={activeTask.Name}.");
+            TraceDiagnostic($"PROJECT_CLICK uid={activeTask.UniqueID}, name=\"{Shorten(activeTask.Name)}\", source={source}.");
             if (activeTask.UniqueID == _lastObservedProjectUid)
                 return;
 
@@ -213,7 +307,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             SyncProjectToExcel(excelApp, activeTask);
         }
 
-        private void SyncProjectToExcel(dynamic excelApp, MSProject.Task activeTask = null)
+        private void SyncProjectToExcel(Excel.Application excelApp, MSProject.Task activeTask = null)
         {
             activeTask = activeTask ?? TryGetActiveTask();
             if (activeTask == null)
@@ -231,9 +325,16 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 return;
             }
 
+            if (!EnsureMatchConfiguration(context, forceShow: false))
+            {
+                SetStatus("Set the Excel match columns, then click the task again.");
+                return;
+            }
+
             int row = FindExcelRowForTask(context, activeTask);
             if (row < 1)
             {
+                TraceDiagnostic($"PROJECT_RESULT expectedUid={activeTask.UniqueID}, expectedExcelRow=<none>, finalExcelRow={GetCurrentExcelRowText(excelApp)}, success=False, reason=row-not-found.");
                 Log($"Project -> Excel: task UID {activeTask.UniqueID} ({activeTask.Name}) not found in workbook={context.WorkbookName}, sheet={context.SheetName}.");
                 SetStatus($"Task UID {activeTask.UniqueID} was not found in Excel.");
                 return;
@@ -245,7 +346,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 SelectExcelRow(context, row);
                 _lastExcelSelectionKey = $"{context.WorkbookName}|{context.SheetName}|{row}";
                 UpdateCurrentHighlightTarget(context, row, activeTask);
-                ApplyHighlights(context, row, activeTask);
+                ApplyHighlights(context, row, CreateProjectFocusResultFromCurrentSelection(activeTask, "ProjectSelection"));
+                TraceDiagnostic($"PROJECT_RESULT expectedUid={activeTask.UniqueID}, expectedExcelRow={row}, finalExcelRow={GetCurrentExcelRowText(excelApp)}, success={string.Equals(GetCurrentExcelRowText(excelApp), row.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)}.");
                 Log($"Project -> Excel: task UID {activeTask.UniqueID} ({activeTask.Name}) matched Excel row {row}.");
                 SetStatus($"Task UID {activeTask.UniqueID} is linked to Excel row {row}.");
             }
@@ -257,41 +359,61 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private ProjectTaskMatch FindProjectTaskForExcelRow(ExcelContext context)
         {
-            var headerMap = GetHeaderMap(context);
-            var rowValues = GetRowValues(context, context.Row);
-            if (rowValues.Count == 0)
+            var index = GetSheetIndex(context);
+            if (index == null)
                 return null;
 
             var uidCandidates = new List<long>();
             var nameCandidates = new List<string>();
 
-            AddPriorityCandidates(context.ActiveCellText, uidCandidates, nameCandidates);
+            if (index.RowToUid.TryGetValue(context.Row, out long rowUid))
+                AddUidCandidate(rowUid, uidCandidates);
 
-            foreach (var pair in rowValues)
-            {
-                string header = headerMap.ContainsKey(pair.Key) ? headerMap[pair.Key] : string.Empty;
-                string cellText = pair.Value;
+            if (index.RowToName.TryGetValue(context.Row, out string rowName))
+                AddNameCandidate(rowName, nameCandidates);
 
-                if (IsUniqueIdHeader(header) && TryParseUid(cellText, out long headerUid))
-                    uidCandidates.Insert(0, headerUid);
-                else if (IsNameHeader(header) && !string.IsNullOrWhiteSpace(cellText))
-                    nameCandidates.Insert(0, cellText.Trim());
-
-                AddPriorityCandidates(cellText, uidCandidates, nameCandidates);
-            }
+            Log($"Excel row {context.Row} candidates: activeColumn={context.Column}, uidColumn={index.UidColumn}, nameColumn={index.NameColumn}, uidCandidates=[{string.Join(", ", uidCandidates)}], nameCandidates=[{string.Join(" | ", OrderNameCandidates(new List<string>(nameCandidates)))}].");
 
             foreach (long uid in uidCandidates)
             {
                 MSProject.Task task = FindTaskByUniqueId(uid);
                 if (task != null)
-                    return new ProjectTaskMatch { Task = task, MatchText = uid.ToString(CultureInfo.InvariantCulture) };
+                {
+                    return new ProjectTaskMatch
+                    {
+                        UniqueId = task.UniqueID,
+                        TaskName = task.Name,
+                        Task = task,
+                        MatchText = uid.ToString(CultureInfo.InvariantCulture)
+                    };
+                }
+
+                string fallbackName = rowName;
+                if (string.IsNullOrWhiteSpace(fallbackName))
+                    fallbackName = GetCellText(context.Worksheet.Cells[context.Row, context.Column]).Trim();
+
+                Log($"Project task pre-lookup missed UID {uid} for Excel row {context.Row}. Continuing with UID-driven navigation.");
+                return new ProjectTaskMatch
+                {
+                    UniqueId = (int)uid,
+                    TaskName = fallbackName,
+                    MatchText = uid.ToString(CultureInfo.InvariantCulture)
+                };
             }
 
             foreach (string name in OrderNameCandidates(nameCandidates))
             {
-                MSProject.Task task = FindTaskByName(name);
+                MSProject.Task task = FindUniqueTaskByName(name);
                 if (task != null)
-                    return new ProjectTaskMatch { Task = task, MatchText = name };
+                {
+                    return new ProjectTaskMatch
+                    {
+                        UniqueId = task.UniqueID,
+                        TaskName = task.Name,
+                        Task = task,
+                        MatchText = name
+                    };
+                }
             }
 
             return null;
@@ -299,35 +421,30 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private int FindExcelRowForTask(ExcelContext context, MSProject.Task task)
         {
-            var headerMap = GetHeaderMap(context);
-            int uidColumn = FindPreferredColumn(headerMap, IsUniqueIdHeader);
-            int nameColumn = FindPreferredColumn(headerMap, IsNameHeader);
+            var index = GetSheetIndex(context);
+            if (index == null)
+                return -1;
 
-            if (uidColumn > 0)
+            if (index.UidToRow.TryGetValue(task.UniqueID, out int uidRow))
+                return uidRow;
+
+            if (index.UniqueNameToRow.TryGetValue(task.Name.Trim(), out int nameRow))
+                return nameRow;
+
+            if (index.NameToRows.TryGetValue(task.Name.Trim(), out List<int> duplicateNameRows))
             {
-                int row = FindRowByCellValue(context, uidColumn, task.UniqueID.ToString(CultureInfo.InvariantCulture), true);
-                if (row > 0)
-                    return row;
+                Log($"Ambiguous Excel row match for Project task '{task.Name}' (UID {task.UniqueID}). Matching rows: {string.Join(", ", duplicateNameRows)}.");
             }
 
-            if (nameColumn > 0)
+            for (int row = context.FirstDataRow; row <= context.UsedRows; row++)
             {
-                int row = FindRowByCellValue(context, nameColumn, task.Name, false);
-                if (row > 0)
+                if (index.RowToUid.TryGetValue(row, out long uid) && uid == task.UniqueID)
                     return row;
-            }
 
-            for (int row = 2; row <= context.UsedRows; row++)
-            {
-                var rowValues = GetRowValues(context, row);
-                foreach (string value in rowValues.Values)
+                if (index.RowToName.TryGetValue(row, out string rowName) &&
+                    string.Equals(rowName, task.Name.Trim(), StringComparison.OrdinalIgnoreCase))
                 {
-                    if (TryParseUid(value, out long uid) && uid == task.UniqueID)
-                        return row;
-
-                    if (!string.IsNullOrWhiteSpace(value) &&
-                        string.Equals(value.Trim(), task.Name, StringComparison.OrdinalIgnoreCase))
-                        return row;
+                    return row;
                 }
             }
 
@@ -337,86 +454,151 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private void SelectExcelRow(ExcelContext context, int row)
         {
             int targetColumn = 1;
-            var headerMap = GetHeaderMap(context);
-            int uidColumn = FindPreferredColumn(headerMap, IsUniqueIdHeader);
-            int nameColumn = FindPreferredColumn(headerMap, IsNameHeader);
+            var index = GetSheetIndex(context);
 
-            if (nameColumn > 0) targetColumn = nameColumn;
-            else if (uidColumn > 0) targetColumn = uidColumn;
+            if (index != null)
+            {
+                if (index.NameColumn > 0) targetColumn = index.NameColumn;
+                else if (index.UidColumn > 0) targetColumn = index.UidColumn;
+            }
 
-            dynamic targetCell = context.Worksheet.Cells[row, targetColumn];
+            Excel.Range targetCell = context.Worksheet.Cells[row, targetColumn] as Excel.Range;
+            Excel.Range rowRange = null;
+            try
+            {
+                Excel.Range rowStart = context.Worksheet.Cells[row, 1] as Excel.Range;
+                Excel.Range rowEnd = context.Worksheet.Cells[row, Math.Max(1, context.UsedColumns)] as Excel.Range;
+                if (rowStart != null && rowEnd != null)
+                    rowRange = context.Worksheet.Range[rowStart, rowEnd];
+            }
+            catch
+            {
+            }
+
+            _ignoreExcelSelectionEventsUntilUtc = DateTime.UtcNow.AddMilliseconds(350);
             try { context.ExcelApp.Visible = true; } catch { }
             try { context.Worksheet.Activate(); } catch { }
             try { context.ExcelApp.Goto(targetCell, true); } catch { }
-            try { targetCell.EntireRow.Select(); } catch { }
+            try { rowRange?.Select(); } catch { }
             try { targetCell.Activate(); } catch { }
             try { context.ExcelApp.ActiveWindow.ScrollRow = Math.Max(1, row - 4); } catch { }
-            try { context.ExcelApp.ActiveWindow.ScrollColumn = targetColumn; } catch { }
+            try { context.ExcelApp.ActiveWindow.ScrollColumn = 1; } catch { }
         }
 
         private void NavigateToProjectTask(MSProject.Task task)
         {
-            try { _app.FilterApply(Name: "All Tasks"); } catch { }
-            try { _app.FilterApply(Name: "<No Filter>"); } catch { }
-            try { _app.GroupApply(Name: "No Group"); } catch { }
-            try { _app.GroupApply(Name: "<No Group>"); } catch { }
-            try { _app.OutlineShowAllTasks(); } catch { }
-
-            try
-            {
-                if (_app.ActiveProject.AutoFilter)
-                {
-                    _app.AutoFilter();
-                    _app.AutoFilter();
-                }
-            }
-            catch { }
-
-            try { _app.EditGoTo(ID: task.ID); } catch { }
-
-            try
-            {
-                _app.Find(
-                    Field: "UniqueID",
-                    Test: "equals",
-                    Value: task.UniqueID.ToString(CultureInfo.InvariantCulture),
-                    Next: true);
-            }
-            catch { }
+            FocusProjectTask(task?.UniqueID ?? -1, suppressSelectionEvents: false, reason: "Navigate to linked Project task", logFailures: false);
         }
 
         private MSProject.Task FindTaskByUniqueId(long uid)
         {
-            try
+            if (uid < 1)
+                return null;
+
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                foreach (MSProject.Task task in _app.ActiveProject.Tasks)
+                try
                 {
-                    if (task != null && task.UniqueID == uid)
-                        return task;
+                    MSProject.Project activeProject = _app.ActiveProject;
+                    MSProject.Tasks tasks = activeProject?.Tasks;
+                    if (tasks == null)
+                    {
+                        Log($"FindTaskByUniqueId({uid}) could not read ActiveProject.Tasks.");
+                        return null;
+                    }
+
+                    int count = Convert.ToInt32(tasks.Count, CultureInfo.InvariantCulture);
+                    for (int index = 1; index <= count; index++)
+                    {
+                        MSProject.Task task = null;
+                        try
+                        {
+                            task = tasks[index];
+                        }
+                        catch (Exception itemEx)
+                        {
+                            Log($"FindTaskByUniqueId({uid}) could not read Tasks[{index}]: {itemEx.GetType().Name}: {itemEx.Message}");
+                        }
+
+                        if (task != null && task.UniqueID == uid)
+                            return task;
+                    }
+
+                    return null;
+                }
+                catch (COMException ex) when (IsProjectBusy(ex))
+                {
+                    Log($"FindTaskByUniqueId({uid}) attempt {attempt} hit busy Project state: {ex.Message}");
+                    System.Threading.Thread.Sleep(75 * attempt);
+                }
+                catch (Exception ex)
+                {
+                    Log($"FindTaskByUniqueId({uid}) failed: {ex.GetType().Name}: {ex.Message}");
+                    return null;
                 }
             }
-            catch { }
 
             return null;
         }
 
-        private MSProject.Task FindTaskByName(string name)
+        private MSProject.Task FindUniqueTaskByName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return null;
 
-            try
-            {
-                foreach (MSProject.Task task in _app.ActiveProject.Tasks)
-                {
-                    if (task == null || string.IsNullOrWhiteSpace(task.Name))
-                        continue;
+            var matches = new List<MSProject.Task>();
 
-                    if (string.Equals(task.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))
-                        return task;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    MSProject.Project activeProject = _app.ActiveProject;
+                    MSProject.Tasks tasks = activeProject?.Tasks;
+                    if (tasks == null)
+                    {
+                        Log($"FindUniqueTaskByName('{name}') could not read ActiveProject.Tasks.");
+                        return null;
+                    }
+
+                    int count = Convert.ToInt32(tasks.Count, CultureInfo.InvariantCulture);
+                    for (int index = 1; index <= count; index++)
+                    {
+                        MSProject.Task task = null;
+                        try
+                        {
+                            task = tasks[index];
+                        }
+                        catch (Exception itemEx)
+                        {
+                            Log($"FindUniqueTaskByName('{name}') could not read Tasks[{index}]: {itemEx.GetType().Name}: {itemEx.Message}");
+                        }
+
+                        if (task == null || string.IsNullOrWhiteSpace(task.Name))
+                            continue;
+
+                        if (string.Equals(task.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))
+                            matches.Add(task);
+                    }
+
+                    break;
+                }
+                catch (COMException ex) when (IsProjectBusy(ex))
+                {
+                    Log($"FindUniqueTaskByName('{name}') attempt {attempt} hit busy Project state: {ex.Message}");
+                    System.Threading.Thread.Sleep(75 * attempt);
+                }
+                catch (Exception ex)
+                {
+                    Log($"FindUniqueTaskByName('{name}') failed: {ex.GetType().Name}: {ex.Message}");
+                    return null;
                 }
             }
-            catch { }
+
+            if (matches.Count == 1)
+                return matches[0];
+
+            if (matches.Count > 1)
+                Log($"Ambiguous Project task name match for '{name}'. Matching UIDs: {string.Join(", ", matches.ConvertAll(task => task.UniqueID.ToString(CultureInfo.InvariantCulture)))}.");
 
             return null;
         }
@@ -432,10 +614,6 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             source = string.Empty;
             selection = selection ?? SafeGetSelection();
 
-            MSProject.Task taskFromWindow = TryGetTaskFromWindow(window, out source);
-            if (taskFromWindow != null)
-                return taskFromWindow;
-
             MSProject.Task taskFromSelection = TryGetTaskFromSelection(selection, out source);
             if (taskFromSelection != null)
                 return taskFromSelection;
@@ -448,6 +626,10 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                     return taskFromCell;
             }
             catch { }
+
+            MSProject.Task taskFromWindow = TryGetTaskFromWindow(window, out source);
+            if (taskFromWindow != null)
+                return taskFromWindow;
 
             try
             {
@@ -615,11 +797,11 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             return null;
         }
 
-        private dynamic TryGetRunningExcel()
+        private Excel.Application TryGetRunningExcel()
         {
             try
             {
-                return Marshal.GetActiveObject("Excel.Application");
+                return Marshal.GetActiveObject("Excel.Application") as Excel.Application;
             }
             catch
             {
@@ -627,14 +809,34 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private ExcelContext GetExcelContext(dynamic excelApp)
+        private ExcelContext GetExcelContext(Excel.Application excelApp)
         {
             try
             {
-                dynamic workbook = excelApp.ActiveWorkbook;
-                dynamic worksheet = excelApp.ActiveSheet;
-                dynamic activeCell = excelApp.ActiveCell;
-                dynamic usedRange = worksheet.UsedRange;
+                Excel.Workbook workbook = excelApp.ActiveWorkbook;
+                Excel.Worksheet worksheet = excelApp.ActiveSheet as Excel.Worksheet;
+                Excel.Range activeCell = excelApp.ActiveCell as Excel.Range;
+                return GetExcelContext(excelApp, worksheet, activeCell);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private ExcelContext GetExcelContext(Excel.Application excelApp, Excel.Worksheet worksheet, Excel.Range activeCell)
+        {
+            try
+            {
+                Excel.Workbook workbook = worksheet?.Parent as Excel.Workbook ?? excelApp?.ActiveWorkbook;
+                worksheet = worksheet ?? excelApp?.ActiveSheet as Excel.Worksheet;
+                activeCell = activeCell ?? excelApp?.ActiveCell as Excel.Range;
+                Excel.Range usedRange = worksheet?.UsedRange;
+                if (excelApp == null || workbook == null || worksheet == null || activeCell == null || usedRange == null)
+                    return null;
+                int usedRows = Math.Max(1, Convert.ToInt32(usedRange.Rows.Count, CultureInfo.InvariantCulture));
+                int usedColumns = Math.Max(1, Convert.ToInt32(usedRange.Columns.Count, CultureInfo.InvariantCulture));
+                int headerRow = DetectHeaderRow(worksheet, usedRows, usedColumns);
 
                 return new ExcelContext
                 {
@@ -643,11 +845,13 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                     Worksheet = worksheet,
                     WorkbookName = Convert.ToString(workbook.Name, CultureInfo.InvariantCulture),
                     SheetName = Convert.ToString(worksheet.Name, CultureInfo.InvariantCulture),
+                    HeaderRow = headerRow,
+                    FirstDataRow = Math.Min(usedRows, headerRow + 1),
                     Row = Convert.ToInt32(activeCell.Row, CultureInfo.InvariantCulture),
                     Column = Convert.ToInt32(activeCell.Column, CultureInfo.InvariantCulture),
                     ActiveCellText = GetCellText(activeCell),
-                    UsedRows = Math.Max(1, Convert.ToInt32(usedRange.Rows.Count, CultureInfo.InvariantCulture)),
-                    UsedColumns = Math.Max(1, Convert.ToInt32(usedRange.Columns.Count, CultureInfo.InvariantCulture))
+                    UsedRows = usedRows,
+                    UsedColumns = usedColumns
                 };
             }
             catch
@@ -658,11 +862,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private Dictionary<int, string> GetHeaderMap(ExcelContext context)
         {
-            var headers = new Dictionary<int, string>();
-            for (int col = 1; col <= context.UsedColumns; col++)
-                headers[col] = GetCellText(context.Worksheet.Cells[1, col]).Trim();
-
-            return headers;
+            return GetSheetIndex(context)?.Headers ?? new Dictionary<int, string>();
         }
 
         private Dictionary<int, string> GetRowValues(ExcelContext context, int row)
@@ -691,7 +891,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private int FindRowByCellValue(ExcelContext context, int column, string value, bool numericOnly)
         {
-            for (int row = 2; row <= context.UsedRows; row++)
+            for (int row = context.FirstDataRow; row <= context.UsedRows; row++)
             {
                 string cellText = GetCellText(context.Worksheet.Cells[row, column]);
                 if (string.IsNullOrWhiteSpace(cellText))
@@ -715,6 +915,40 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             return -1;
         }
 
+        private int FindUniqueRowByCellValue(ExcelContext context, int column, string value, bool numericOnly)
+        {
+            var matches = new List<int>();
+
+            for (int row = context.FirstDataRow; row <= context.UsedRows; row++)
+            {
+                string cellText = GetCellText(context.Worksheet.Cells[row, column]);
+                if (string.IsNullOrWhiteSpace(cellText))
+                    continue;
+
+                if (numericOnly)
+                {
+                    if (TryParseUid(cellText, out long rowUid) &&
+                        TryParseUid(value, out long valueUid) &&
+                        rowUid == valueUid)
+                    {
+                        matches.Add(row);
+                    }
+                }
+                else if (string.Equals(cellText.Trim(), value.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    matches.Add(row);
+                }
+            }
+
+            if (matches.Count == 1)
+                return matches[0];
+
+            if (matches.Count > 1)
+                Log($"Ambiguous Excel row match for value '{value}' in column {column}. Matching rows: {string.Join(", ", matches)}.");
+
+            return -1;
+        }
+
         private string GetCellText(dynamic cell)
         {
             try
@@ -728,16 +962,42 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private void AddPriorityCandidates(string rawText, List<long> uidCandidates, List<string> nameCandidates)
+        private void AddUidCandidate(string rawText, List<long> uidCandidates, bool prioritize = false)
         {
             string trimmed = rawText?.Trim();
             if (string.IsNullOrWhiteSpace(trimmed))
                 return;
 
-            if (TryParseUid(trimmed, out long uid) && !uidCandidates.Contains(uid))
-                uidCandidates.Add(uid);
+            if (TryParseUid(trimmed, out long uid))
+                AddUidCandidate(uid, uidCandidates, prioritize);
+        }
 
-            if (!nameCandidates.Contains(trimmed))
+        private void AddUidCandidate(long uid, List<long> uidCandidates, bool prioritize = false)
+        {
+            if (uidCandidates.Contains(uid))
+                uidCandidates.Remove(uid);
+
+            if (prioritize)
+                uidCandidates.Insert(0, uid);
+            else
+                uidCandidates.Add(uid);
+        }
+
+        private void AddNameCandidate(string rawText, List<string> nameCandidates, bool prioritize = false)
+        {
+            string trimmed = rawText?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return;
+
+            for (int index = nameCandidates.Count - 1; index >= 0; index--)
+            {
+                if (string.Equals(nameCandidates[index], trimmed, StringComparison.OrdinalIgnoreCase))
+                    nameCandidates.RemoveAt(index);
+            }
+
+            if (prioritize)
+                nameCandidates.Insert(0, trimmed);
+            else
                 nameCandidates.Add(trimmed);
         }
 
@@ -773,6 +1033,24 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             return normalized == "name" || normalized.Contains("taskname");
         }
 
+        private bool IsContactHeader(string header)
+        {
+            string normalized = NormalizeHeader(header);
+            return normalized == "contact";
+        }
+
+        private bool IsStartHeader(string header)
+        {
+            string normalized = NormalizeHeader(header);
+            return normalized == "start" || normalized.Contains("updatedstart");
+        }
+
+        private bool IsFinishHeader(string header)
+        {
+            string normalized = NormalizeHeader(header);
+            return normalized == "finish" || normalized.Contains("updatedfinish");
+        }
+
         private string NormalizeHeader(string header)
         {
             return (header ?? string.Empty).Replace(" ", string.Empty).ToLowerInvariant();
@@ -792,6 +1070,124 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 _form.Show();
                 _form.BringToFront();
             }
+        }
+
+        private string GetWorksheetName(dynamic worksheet)
+        {
+            try
+            {
+                return Convert.ToString(worksheet?.Name, CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private string GetWorkbookName(dynamic worksheet)
+        {
+            try
+            {
+                return Convert.ToString(worksheet?.Parent?.Name, CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private string GetCurrentProjectUidText()
+        {
+            try
+            {
+                MSProject.Task task = TryGetActiveTask();
+                return task == null
+                    ? "<none>"
+                    : task.UniqueID.ToString(CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return "<error>";
+            }
+        }
+
+        private string GetCurrentProjectName()
+        {
+            try
+            {
+                MSProject.Task task = TryGetActiveTask();
+                return task?.Name ?? "<none>";
+            }
+            catch
+            {
+                return "<error>";
+            }
+        }
+
+        private string GetCurrentExcelRowText(Excel.Application excelApp)
+        {
+            try
+            {
+                Excel.Range activeCell = excelApp?.ActiveCell as Excel.Range;
+                return activeCell == null
+                    ? "<none>"
+                    : Convert.ToInt32(activeCell.Row, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return "<error>";
+            }
+        }
+
+        private string GetColumnLabel(int column)
+        {
+            if (column < 1)
+                return "?";
+
+            string label = string.Empty;
+            int current = column;
+            while (current > 0)
+            {
+                current--;
+                label = (char)('A' + (current % 26)) + label;
+                current /= 26;
+            }
+
+            return label;
+        }
+
+        private string Shorten(string text, int maxLength = 80)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string trimmed = text.Trim().Replace(Environment.NewLine, " ");
+            return trimmed.Length <= maxLength
+                ? trimmed
+                : trimmed.Substring(0, maxLength - 3) + "...";
+        }
+
+        private void HidePanel()
+        {
+            if (_form == null || _form.IsDisposed)
+                return;
+
+            _form.Hide();
+        }
+
+        private void ShowActivePanel(string statusText = null)
+        {
+            if (_mode == AJProjectLinkerMode.Off)
+                return;
+
+            EnsurePanel();
+            _form.SetModeText(GetModeDisplayText(_mode));
+            _form.SetLinkState(true);
+
+            if (string.IsNullOrWhiteSpace(statusText))
+                UpdateStatusText();
+            else
+                SetStatus(statusText);
         }
 
         private void Form_CloseRequested(object sender, EventArgs e)
@@ -821,7 +1217,19 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             if (_form == null || _form.IsDisposed)
                 return;
 
-            _form.UpdateStatus(text);
+            _form.UpdateStatus(text, IsErrorStatus(text));
+        }
+
+        private bool IsErrorStatus(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            string normalized = text.Trim().ToLowerInvariant();
+            return normalized.Contains("no task match was found") ||
+                   normalized.Contains("was not found in excel") ||
+                   normalized.Contains("could not be read") ||
+                   normalized.Contains("stayed on uid");
         }
 
         private void ResetTracking()
@@ -832,13 +1240,16 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _lastProjectDetectionSnapshot = string.Empty;
             _suppressProjectToExcelUntilUtc = DateTime.MinValue;
             _ignoreProjectSelectionEventsUntilUtc = DateTime.MinValue;
+            _ignoreExcelSelectionEventsUntilUtc = DateTime.MinValue;
         }
 
         private void DeactivateLinking(bool clearActiveHighlights)
         {
             _mode = AJProjectLinkerMode.Off;
-            _pollTimer.Stop();
+            _heartbeatTimer.Stop();
+            UnbindExcelEvents();
             ResetTracking();
+            InvalidateSheetIndex("Project Linker deactivated.");
 
             if (clearActiveHighlights)
                 ClearHighlights();
@@ -852,6 +1263,18 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _currentHighlightSheetName = context?.SheetName ?? string.Empty;
             _currentHighlightRow = row;
             _currentHighlightProjectUid = task?.UniqueID ?? -1;
+            Log($"State commit: workbook={_currentHighlightWorkbookName}, sheet={_currentHighlightSheetName}, excelRow={_currentHighlightRow}, projectUid={_currentHighlightProjectUid}.");
+        }
+
+        private void ResetHighlighterState(bool clearVisuals)
+        {
+            if (clearVisuals)
+                ClearHighlights();
+
+            _activeExcelHighlight = null;
+            _activeProjectHighlight = null;
+            _ignoreProjectSelectionEventsUntilUtc = DateTime.MinValue;
+            _ignoreExcelSelectionEventsUntilUtc = DateTime.MinValue;
         }
 
         private void RefreshHighlights()
@@ -860,7 +1283,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 return;
 
             var task = FindTaskByUniqueId(_currentHighlightProjectUid);
-            dynamic excelApp = TryGetRunningExcel();
+            var excelApp = EnsureExcelBinding();
             var context = excelApp == null ? null : GetExcelContext(excelApp);
             if (task == null || context == null)
                 return;
@@ -875,7 +1298,18 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _isSyncing = true;
             try
             {
-                ApplyHighlights(context, _currentHighlightRow, task);
+                ProjectFocusResult focusResult = null;
+                if (_activeProjectHighlight != null &&
+                    _activeProjectHighlight.ProjectUid == _currentHighlightProjectUid)
+                {
+                    focusResult = ProjectFocusResult.Succeeded(task, "StoredHighlight", -1);
+                }
+                else
+                {
+                    focusResult = FocusProjectTask(_currentHighlightProjectUid, suppressSelectionEvents: true, reason: $"Refresh highlight UID {_currentHighlightProjectUid}", logFailures: false);
+                }
+
+                ApplyHighlights(context, _currentHighlightRow, focusResult);
             }
             finally
             {
@@ -883,14 +1317,34 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private void ApplyHighlights(ExcelContext context, int row, MSProject.Task task)
+        private void ApplyHighlights(ExcelContext context, int row, ProjectFocusResult focusResult)
         {
-            if (!_highlightEnabled || context == null || row < 1 || task == null)
+            if (!_highlightEnabled || context == null || row < 1 || focusResult == null || !focusResult.Success || focusResult.SelectedTask == null)
                 return;
 
-            ClearHighlights();
-            ApplyExcelHighlight(context, row);
-            ApplyProjectHighlight(task);
+            int highlightColor = ColorTranslator.ToOle(_highlightColor);
+            bool sameExcelTarget =
+                _activeExcelHighlight != null &&
+                _activeExcelHighlight.Row == row &&
+                _activeExcelHighlight.Color == highlightColor &&
+                string.Equals(GetWorksheetName(_activeExcelHighlight.Worksheet), context.SheetName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(_activeExcelHighlight.WorkbookName, context.WorkbookName, StringComparison.OrdinalIgnoreCase);
+
+            bool sameProjectTarget =
+                _activeProjectHighlight != null &&
+                _activeProjectHighlight.ProjectUid == focusResult.SelectedTask.UniqueID &&
+                _activeProjectHighlight.Color == highlightColor;
+
+            TraceDiagnostic($"HIGHLIGHT_APPLY uid={focusResult.SelectedTask.UniqueID}, excelRow={row}, sameExcelTarget={sameExcelTarget}, sameProjectTarget={sameProjectTarget}, projectRow={focusResult.ProjectRow}.");
+
+            if (!sameExcelTarget)
+            {
+                ClearExcelHighlight();
+                ApplyExcelHighlight(context, row);
+            }
+
+            if (!sameProjectTarget)
+                UpdateProjectHighlight(focusResult);
         }
 
         private void ClearHighlights()
@@ -907,6 +1361,10 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             for (int col = 1; col <= context.UsedColumns; col++)
             {
                 dynamic cell = context.Worksheet.Cells[row, col];
+                string text = GetCellText(cell);
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
                 previousFills[col] = CaptureExcelCellFill(cell);
 
                 try { cell.Interior.Color = highlightColor; } catch { }
@@ -915,7 +1373,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _activeExcelHighlight = new ExcelHighlightState
             {
                 Worksheet = context.Worksheet,
+                WorkbookName = context.WorkbookName,
                 Row = row,
+                Color = highlightColor,
                 PreviousFills = previousFills
             };
         }
@@ -992,18 +1452,45 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private void ApplyProjectHighlight(MSProject.Task task)
+        private void UpdateProjectHighlight(ProjectFocusResult focusResult)
         {
+            if (focusResult == null || !focusResult.Success || focusResult.SelectedTask == null)
+                return;
+
+            ProjectHighlightState previousHighlight = _activeProjectHighlight;
+            _activeProjectHighlight = null;
+
             try
             {
                 _app.ScreenUpdating = false;
-                SuppressProjectSelectionEvents(400, $"Apply Project highlight UID {task.UniqueID}");
-                _app.SelectTaskField(Row: task.ID, Column: "Name", RowRelative: false);
+                SuppressProjectSelectionEvents(350, $"Apply Project highlight UID {focusResult.SelectedTask.UniqueID}");
+
+                if (previousHighlight != null &&
+                    previousHighlight.ProjectRow > 0 &&
+                    (previousHighlight.ProjectUid != focusResult.SelectedTask.UniqueID || previousHighlight.Color != ColorTranslator.ToOle(_highlightColor)))
+                {
+                    TraceDiagnostic($"HIGHLIGHT_CLEAR uid={previousHighlight.ProjectUid}, projectRow={previousHighlight.ProjectRow}.");
+                    TrySelectProjectTaskNameField(previousHighlight.ProjectRow, null);
+                    _app.Font32Ex(CellColor: -16777216);
+                }
+
+                if (focusResult.ProjectRow > 0)
+                    TrySelectProjectTaskNameField(focusResult.ProjectRow, focusResult.SelectedTask);
+                else
+                    TrySelectCurrentProjectTaskNameField(focusResult.SelectedTask);
                 _app.Font32Ex(CellColor: ColorTranslator.ToOle(_highlightColor));
-                _activeProjectHighlightUid = task.UniqueID;
+                _activeProjectHighlight = new ProjectHighlightState
+                {
+                    ProjectUid = focusResult.SelectedTask.UniqueID,
+                    TaskName = focusResult.SelectedTask.Name,
+                    ProjectRow = focusResult.ProjectRow,
+                    Color = ColorTranslator.ToOle(_highlightColor)
+                };
             }
-            catch
+            catch (Exception ex)
             {
+                Log($"Apply Project highlight failed for UID {focusResult.SelectedTask.UniqueID}: {ex.GetType().Name}: {ex.Message}");
+                _activeProjectHighlight = previousHighlight;
             }
             finally
             {
@@ -1013,27 +1500,679 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private void ClearProjectHighlight()
         {
-            if (_activeProjectHighlightUid < 1)
+            if (_activeProjectHighlight == null)
                 return;
 
-            var task = FindTaskByUniqueId(_activeProjectHighlightUid);
-            _activeProjectHighlightUid = -1;
-            if (task == null)
-                return;
+            ProjectHighlightState highlight = _activeProjectHighlight;
+            _activeProjectHighlight = null;
+            TraceDiagnostic($"HIGHLIGHT_CLEAR uid={highlight.ProjectUid}, projectRow={highlight.ProjectRow}.");
 
             try
             {
                 _app.ScreenUpdating = false;
-                SuppressProjectSelectionEvents(400, $"Clear Project highlight UID {task.UniqueID}");
-                _app.SelectTaskField(Row: task.ID, Column: "Name", RowRelative: false);
+                if (highlight.ProjectRow < 1)
+                {
+                    Log($"Clear Project highlight skipped because UID {highlight.ProjectUid} had no stored project row.");
+                    return;
+                }
+
+                SuppressProjectSelectionEvents(350, $"Clear Project highlight UID {highlight.ProjectUid}");
+                TrySelectProjectTaskNameField(highlight.ProjectRow, null);
                 _app.Font32Ex(CellColor: -16777216);
             }
-            catch
+            catch (Exception ex)
             {
+                Log($"Clear Project highlight failed for prior UID {highlight.ProjectUid}: {ex.GetType().Name}: {ex.Message}");
             }
             finally
             {
                 try { _app.ScreenUpdating = true; } catch { }
+            }
+        }
+
+        private Excel.Application EnsureExcelBinding()
+        {
+            Excel.Application runningExcel = TryGetRunningExcel();
+            int runningHwnd = GetExcelHwnd(runningExcel);
+
+            if (runningExcel == null)
+            {
+                if (_excelApp != null)
+                {
+                    Log("Excel binding cleared because no running Excel instance was detected.");
+                    UnbindExcelEvents();
+                    InvalidateSheetIndex("Excel binding cleared.");
+                }
+
+                return null;
+            }
+
+            if (_excelApp != null && runningHwnd == _excelAppHwnd && runningHwnd != 0)
+                return _excelApp;
+
+            UnbindExcelEvents();
+
+            _excelApp = runningExcel;
+            _excelAppHwnd = runningHwnd;
+            BindExcelEvents(_excelApp);
+            InvalidateSheetIndex("Excel binding refreshed.");
+            Log($"Excel binding attached. Hwnd={_excelAppHwnd}.");
+            return _excelApp;
+        }
+
+        private void BindExcelEvents(Excel.Application excelApp)
+        {
+            if (excelApp == null)
+                return;
+
+            try { excelApp.SheetSelectionChange += ExcelApp_SheetSelectionChange; } catch (Exception ex) { Log($"Bind Excel SheetSelectionChange failed: {ex.GetType().Name}: {ex.Message}"); }
+            try { excelApp.SheetActivate += ExcelApp_SheetActivate; } catch (Exception ex) { Log($"Bind Excel SheetActivate failed: {ex.GetType().Name}: {ex.Message}"); }
+            try { excelApp.SheetChange += ExcelApp_SheetChange; } catch (Exception ex) { Log($"Bind Excel SheetChange failed: {ex.GetType().Name}: {ex.Message}"); }
+            try { excelApp.WorkbookActivate += ExcelApp_WorkbookActivate; } catch (Exception ex) { Log($"Bind Excel WorkbookActivate failed: {ex.GetType().Name}: {ex.Message}"); }
+            try { excelApp.WorkbookOpen += ExcelApp_WorkbookOpen; } catch (Exception ex) { Log($"Bind Excel WorkbookOpen failed: {ex.GetType().Name}: {ex.Message}"); }
+            try { excelApp.WorkbookBeforeClose += ExcelApp_WorkbookBeforeClose; } catch (Exception ex) { Log($"Bind Excel WorkbookBeforeClose failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        private void UnbindExcelEvents()
+        {
+            if (_excelApp == null)
+                return;
+
+            try { _excelApp.SheetSelectionChange -= ExcelApp_SheetSelectionChange; } catch { }
+            try { _excelApp.SheetActivate -= ExcelApp_SheetActivate; } catch { }
+            try { _excelApp.SheetChange -= ExcelApp_SheetChange; } catch { }
+            try { _excelApp.WorkbookActivate -= ExcelApp_WorkbookActivate; } catch { }
+            try { _excelApp.WorkbookOpen -= ExcelApp_WorkbookOpen; } catch { }
+            try { _excelApp.WorkbookBeforeClose -= ExcelApp_WorkbookBeforeClose; } catch { }
+
+            _excelApp = null;
+            _excelAppHwnd = 0;
+        }
+
+        private int GetExcelHwnd(Excel.Application excelApp)
+        {
+            try
+            {
+                return excelApp == null ? 0 : excelApp.Hwnd;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private void InvalidateSheetIndex(string reason)
+        {
+            _sheetIndexCache = null;
+            Log(reason);
+        }
+
+        private ProjectFocusResult FocusProjectTask(int uid, bool suppressSelectionEvents, string reason, bool logFailures)
+        {
+            if (uid < 1)
+                return ProjectFocusResult.Failed(null, string.Empty);
+
+            var task = FindTaskByUniqueId(uid);
+
+            try
+            {
+                if (suppressSelectionEvents)
+                    SuppressProjectSelectionEvents(500, reason);
+
+                string taskIdText = task == null ? "<unknown>" : task.ID.ToString(CultureInfo.InvariantCulture);
+                string taskNameText = task?.Name ?? "<unknown>";
+                Log($"Project focus start: expectedUid={uid}, taskId={taskIdText}, taskName={taskNameText}, reason={reason}.");
+                ProjectFocusResult fastResult = AttemptProjectFocus(uid, task, "FastPath", prepareView: false, logFailures: logFailures);
+                if (fastResult.Success)
+                    return fastResult;
+
+                Log($"Project focus fast path missed for UID {uid}. Falling back to prepared view navigation.");
+                return AttemptProjectFocus(uid, task, "PreparedPath", prepareView: true, logFailures: logFailures);
+            }
+            catch (Exception ex)
+            {
+                if (logFailures)
+                    Log($"Project focus failed for UID {uid}: {ex.GetType().Name}: {ex.Message}");
+
+                return ProjectFocusResult.Failed(null, string.Empty);
+            }
+        }
+
+        private ProjectFocusResult AttemptProjectFocus(int uid, MSProject.Task task, string stageLabel, bool prepareView, bool logFailures)
+        {
+            if (prepareView)
+                PrepareProjectViewForTaskNavigation();
+
+            string beforeSelection = CaptureCurrentProjectSelection($"{stageLabel} Before");
+            TryFindProjectTaskByUid(uid);
+            string afterFind = CaptureCurrentProjectSelection($"{stageLabel} After Find");
+
+            string source;
+            MSProject.Task selectedTask = TryGetActiveTask(null, null, out source);
+            if (selectedTask == null)
+            {
+                if (logFailures)
+                    Log($"{stageLabel} verification failed: expectedUid={uid}, but no active task could be detected. before={beforeSelection}, afterFind={afterFind}.");
+
+                return ProjectFocusResult.Failed(null, source);
+            }
+
+            if (selectedTask.UniqueID != uid)
+            {
+                if (logFailures)
+                    Log($"{stageLabel} verification mismatch: expectedUid={uid}, actualUid={selectedTask.UniqueID}, actualName={selectedTask.Name}, source={source}, before={beforeSelection}, afterFind={afterFind}.");
+
+                return ProjectFocusResult.Failed(selectedTask, source);
+            }
+
+            int projectRow = ResolveProjectRow(selectedTask, $"{stageLabel} confirmation");
+            Log($"Project focus confirmed: stage={stageLabel}, expectedUid={uid}, actualUid={selectedTask.UniqueID}, actualName={selectedTask.Name}, projectRow={projectRow}, source={source}, before={beforeSelection}, afterFind={afterFind}.");
+            return ProjectFocusResult.Succeeded(selectedTask, source, projectRow);
+        }
+
+        private void PrepareProjectViewForTaskNavigation()
+        {
+            try { _app.FilterApply(Name: "All Tasks"); } catch { }
+            try { _app.FilterApply(Name: "<No Filter>"); } catch { }
+            try { _app.GroupApply(Name: "No Group"); } catch { }
+            try { _app.GroupApply(Name: "<No Group>"); } catch { }
+            try { _app.OutlineShowAllTasks(); } catch { }
+
+            try
+            {
+                if (_app.ActiveProject.AutoFilter)
+                {
+                    _app.AutoFilter();
+                    _app.AutoFilter();
+                }
+            }
+            catch { }
+        }
+
+        private void TryFindProjectTaskByUid(int uid)
+        {
+            try
+            {
+                _app.Find(
+                    Field: "Unique ID",
+                    Test: "equals",
+                    Value: uid.ToString(CultureInfo.InvariantCulture),
+                    Next: false,
+                    MatchCase: false);
+            }
+            catch (Exception ex)
+            {
+                Log($"Find by Unique ID failed for UID {uid}: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private bool IsProjectBusy(COMException ex)
+        {
+            const int RpcServerCallRetryLater = unchecked((int)0x8001010A);
+            const int ApplicationBusy = unchecked((int)0x80010001);
+            int errorCode = ex?.ErrorCode ?? 0;
+            return errorCode == RpcServerCallRetryLater || errorCode == ApplicationBusy;
+        }
+
+        private void TrySelectProjectTaskNameField(int projectRow, MSProject.Task task)
+        {
+            if (projectRow < 1)
+                return;
+
+            try
+            {
+                _app.SelectTaskField(Row: projectRow, Column: "Name", RowRelative: false);
+            }
+            catch (Exception ex)
+            {
+                string taskInfo = task == null
+                    ? "unknown task"
+                    : $"UID {task.UniqueID}, ID {task.ID}";
+                Log($"SelectTaskField(Name) failed for row {projectRow} ({taskInfo}): {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private void TrySelectCurrentProjectTaskNameField(MSProject.Task task)
+        {
+            try
+            {
+                _app.SelectTaskField(Row: 0, Column: "Name", RowRelative: true);
+            }
+            catch (Exception ex)
+            {
+                string taskInfo = task == null
+                    ? "unknown task"
+                    : $"UID {task.UniqueID}, ID {task.ID}";
+                Log($"SelectTaskField(Name current row) failed ({taskInfo}): {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private string CaptureCurrentProjectSelection(string stage)
+        {
+            try
+            {
+                string source;
+                MSProject.Task task = TryGetActiveTask(null, null, out source);
+                int row = GetCurrentProjectVisibleRow();
+                if (task == null)
+                    return $"{stage}: uid=<none>, row={row}, source={source}";
+
+                return $"{stage}: uid={task.UniqueID}, id={task.ID}, row={row}, name={task.Name}, source={source}";
+            }
+            catch (Exception ex)
+            {
+                return $"{stage}: captureFailed={ex.GetType().Name}:{ex.Message}";
+            }
+        }
+
+        private int ResolveProjectRow(MSProject.Task task, string reason)
+        {
+            int activeCellRow = GetCurrentProjectVisibleRow();
+            if (activeCellRow > 0)
+                return activeCellRow;
+
+            if (task != null)
+            {
+                try
+                {
+                    if (task.ID > 0)
+                    {
+                        Log($"Project row fallback used for UID {task.UniqueID} ({task.Name}) during {reason}: ActiveCell row was unavailable, using task.ID {task.ID}.");
+                        return task.ID;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return -1;
+        }
+
+        private int GetCurrentProjectVisibleRow()
+        {
+            try
+            {
+                dynamic activeCell = _app.ActiveCell;
+                if (activeCell != null)
+                    return Convert.ToInt32(activeCell.Row, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+            }
+
+            return -1;
+        }
+
+        private ProjectFocusResult CreateProjectFocusResultFromCurrentSelection(MSProject.Task task, string source)
+        {
+            return ProjectFocusResult.Succeeded(task, source, ResolveProjectRow(task, source));
+        }
+
+        private bool TryPromptForMatchConfiguration(Excel.Application excelApp, bool forceShow)
+        {
+            if (!_needsMatchConfigurationPrompt && !forceShow)
+                return excelApp != null && HasUsableMatchConfiguration(GetExcelContext(excelApp));
+
+            if (excelApp == null)
+                return false;
+
+            var context = GetExcelContext(excelApp);
+            if (context == null)
+                return false;
+
+            bool configurationReady = EnsureMatchConfiguration(context, forceShow);
+            _needsMatchConfigurationPrompt = !configurationReady;
+
+            if (configurationReady)
+                ShowActivePanel("Click anywhere in the Excel sheet to find the task.");
+
+            return configurationReady;
+        }
+
+        private bool EnsureMatchConfiguration(ExcelContext context, bool forceShow)
+        {
+            if (context == null)
+                return false;
+
+            if (!forceShow && HasUsableMatchConfiguration(context))
+                return true;
+
+            var options = BuildColumnOptions(context);
+            var suggested = BuildSuggestedMatchConfiguration(context);
+            using (var form = new AJProjectLinkerMatchConfigForm(options, suggested))
+            {
+                if (form.ShowDialog() != DialogResult.OK || form.ResultConfiguration == null)
+                {
+                    Log("Project Linker column mapping dialog was canceled.");
+                    return HasUsableMatchConfiguration(context);
+                }
+
+                _matchConfiguration = form.ResultConfiguration;
+                SaveMatchConfiguration();
+                InvalidateSheetIndex("Project Linker match configuration updated.");
+                Log($"Project Linker match configuration saved: {DescribeMatchConfiguration(_matchConfiguration)}.");
+                SetStatus("Click anywhere in the Excel sheet to find the task.");
+                return HasUsableMatchConfiguration(context);
+            }
+        }
+
+        private ProjectLinkerMatchConfiguration BuildSuggestedMatchConfiguration(ExcelContext context)
+        {
+            var headers = new Dictionary<int, string>();
+            for (int col = 1; col <= context.UsedColumns; col++)
+                headers[col] = GetCellText(context.Worksheet.Cells[context.HeaderRow, col]).Trim();
+
+            int detectedUidColumn = FindPreferredColumn(headers, IsUniqueIdHeader);
+            int detectedNameColumn = FindPreferredColumn(headers, IsNameHeader);
+
+            int defaultUidColumn = ClampConfiguredColumn(_matchConfiguration?.UniqueIdColumn ?? (detectedUidColumn > 0 ? detectedUidColumn : 1), context.UsedColumns);
+            int defaultNameColumn = ClampConfiguredColumn(_matchConfiguration?.TaskNameColumn ?? (detectedNameColumn > 0 ? detectedNameColumn : Math.Min(3, context.UsedColumns)), context.UsedColumns);
+
+            bool useUniqueId = _matchConfiguration?.UseUniqueId ?? true;
+            bool useTaskName = _matchConfiguration?.UseTaskName ?? false;
+
+            if (!useUniqueId && !useTaskName)
+                useUniqueId = true;
+
+            return new ProjectLinkerMatchConfiguration
+            {
+                UseUniqueId = useUniqueId,
+                UniqueIdColumn = defaultUidColumn,
+                UseTaskName = useTaskName,
+                TaskNameColumn = defaultNameColumn
+            };
+        }
+
+        private ProjectLinkerMatchConfiguration GetEffectiveMatchConfiguration(ExcelContext context)
+        {
+            var configuration = BuildSuggestedMatchConfiguration(context);
+            if (!HasUsableMatchConfiguration(context, configuration))
+            {
+                configuration.UseUniqueId = configuration.UniqueIdColumn >= 1 && configuration.UniqueIdColumn <= context.UsedColumns;
+                configuration.UseTaskName = configuration.TaskNameColumn >= 1 && configuration.TaskNameColumn <= context.UsedColumns;
+            }
+
+            return configuration;
+        }
+
+        private bool HasUsableMatchConfiguration(ExcelContext context)
+        {
+            return HasUsableMatchConfiguration(context, _matchConfiguration);
+        }
+
+        private bool HasUsableMatchConfiguration(ExcelContext context, ProjectLinkerMatchConfiguration configuration)
+        {
+            if (context == null || configuration == null)
+                return false;
+
+            bool hasUid = configuration.UseUniqueId &&
+                          configuration.UniqueIdColumn >= 1 &&
+                          configuration.UniqueIdColumn <= context.UsedColumns;
+            bool hasName = configuration.UseTaskName &&
+                           configuration.TaskNameColumn >= 1 &&
+                           configuration.TaskNameColumn <= context.UsedColumns;
+            return hasUid || hasName;
+        }
+
+        private int ClampConfiguredColumn(int column, int usedColumns)
+        {
+            if (usedColumns < 1)
+                return 1;
+
+            if (column < 1)
+                return 1;
+
+            return Math.Min(column, usedColumns);
+        }
+
+        private List<ProjectLinkerColumnOption> BuildColumnOptions(ExcelContext context)
+        {
+            var options = new List<ProjectLinkerColumnOption>();
+            if (context == null)
+                return options;
+
+            for (int col = 1; col <= context.UsedColumns; col++)
+            {
+                options.Add(new ProjectLinkerColumnOption
+                {
+                    Column = col,
+                    Label = $"Column {GetExcelColumnLetter(col)}"
+                });
+            }
+
+            return options;
+        }
+
+        private string GetExcelColumnLetter(int columnNumber)
+        {
+            if (columnNumber < 1)
+                return string.Empty;
+
+            string result = string.Empty;
+            int value = columnNumber;
+            while (value > 0)
+            {
+                value--;
+                result = Convert.ToChar('A' + (value % 26), CultureInfo.InvariantCulture) + result;
+                value /= 26;
+            }
+
+            return result;
+        }
+
+        private ProjectLinkerMatchConfiguration LoadMatchConfiguration()
+        {
+            try
+            {
+                if (!File.Exists(_configPath))
+                    return null;
+
+                return JsonConvert.DeserializeObject<ProjectLinkerMatchConfiguration>(File.ReadAllText(_configPath));
+            }
+            catch (Exception ex)
+            {
+                Log($"Load Project Linker match configuration failed: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+
+        private void SaveMatchConfiguration()
+        {
+            if (_matchConfiguration == null)
+                return;
+
+            try
+            {
+                File.WriteAllText(_configPath, JsonConvert.SerializeObject(_matchConfiguration, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                Log($"Save Project Linker match configuration failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private string DescribeMatchConfiguration(ProjectLinkerMatchConfiguration configuration)
+        {
+            if (configuration == null)
+                return "none";
+
+            return $"useUid={configuration.UseUniqueId}, uidColumn={GetExcelColumnLetter(configuration.UniqueIdColumn)}({configuration.UniqueIdColumn}), useTaskName={configuration.UseTaskName}, taskNameColumn={GetExcelColumnLetter(configuration.TaskNameColumn)}({configuration.TaskNameColumn})";
+        }
+
+        private int DetectHeaderRow(dynamic worksheet, int usedRows, int usedColumns)
+        {
+            int bestRow = 1;
+            int bestScore = int.MinValue;
+            int maxScanRow = Math.Min(Math.Max(usedRows, 1), 6);
+
+            for (int row = 1; row <= maxScanRow; row++)
+            {
+                int score = 0;
+                for (int col = 1; col <= usedColumns; col++)
+                {
+                    string header = GetCellText(worksheet.Cells[row, col]).Trim();
+                    if (string.IsNullOrWhiteSpace(header))
+                        continue;
+
+                    if (IsUniqueIdHeader(header)) score += 4;
+                    else if (IsNameHeader(header)) score += 4;
+                    else if (IsContactHeader(header)) score += 2;
+                    else if (IsStartHeader(header) || IsFinishHeader(header)) score += 1;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestRow = row;
+                }
+            }
+
+            return bestScore > 0 ? bestRow : 1;
+        }
+
+        private ExcelSheetIndex GetSheetIndex(ExcelContext context)
+        {
+            if (context == null)
+                return null;
+
+            if (_sheetIndexCache != null &&
+                string.Equals(_sheetIndexCache.WorkbookName, context.WorkbookName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(_sheetIndexCache.SheetName, context.SheetName, StringComparison.OrdinalIgnoreCase) &&
+                _sheetIndexCache.HeaderRow == context.HeaderRow &&
+                _sheetIndexCache.UsedRows == context.UsedRows &&
+                _sheetIndexCache.UsedColumns == context.UsedColumns)
+            {
+                return _sheetIndexCache;
+            }
+
+            _sheetIndexCache = BuildSheetIndex(context);
+            return _sheetIndexCache;
+        }
+
+        private ExcelSheetIndex BuildSheetIndex(ExcelContext context)
+        {
+            var headers = new Dictionary<int, string>();
+            for (int col = 1; col <= context.UsedColumns; col++)
+                headers[col] = GetCellText(context.Worksheet.Cells[context.HeaderRow, col]).Trim();
+
+            ProjectLinkerMatchConfiguration configuration = GetEffectiveMatchConfiguration(context);
+            int uidColumn = configuration.UseUniqueId ? configuration.UniqueIdColumn : -1;
+            int nameColumn = configuration.UseTaskName ? configuration.TaskNameColumn : -1;
+            var rowToUid = new Dictionary<int, long>();
+            var uidToRow = new Dictionary<long, int>();
+            var rowToName = new Dictionary<int, string>();
+            var uniqueNameToRow = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var nameToRows = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+
+            if (uidColumn > 0)
+            {
+                object[,] uidValues = ReadExcelColumnValues(context.Worksheet, uidColumn, context.FirstDataRow, context.UsedRows);
+                for (int row = context.FirstDataRow; row <= context.UsedRows; row++)
+                {
+                    string text = GetRangeValueText(uidValues, row - context.FirstDataRow + 1);
+                    if (!TryParseUid(text, out long uid))
+                        continue;
+
+                    rowToUid[row] = uid;
+                    if (!uidToRow.ContainsKey(uid))
+                        uidToRow[uid] = row;
+                }
+            }
+
+            if (nameColumn > 0)
+            {
+                object[,] nameValues = ReadExcelColumnValues(context.Worksheet, nameColumn, context.FirstDataRow, context.UsedRows);
+                for (int row = context.FirstDataRow; row <= context.UsedRows; row++)
+                {
+                    string text = GetRangeValueText(nameValues, row - context.FirstDataRow + 1).Trim();
+                    if (string.IsNullOrWhiteSpace(text))
+                        continue;
+
+                    rowToName[row] = text;
+                    if (!nameToRows.TryGetValue(text, out List<int> rows))
+                    {
+                        rows = new List<int>();
+                        nameToRows[text] = rows;
+                    }
+
+                    rows.Add(row);
+                }
+
+                foreach (var pair in nameToRows)
+                {
+                    if (pair.Value.Count == 1)
+                        uniqueNameToRow[pair.Key] = pair.Value[0];
+                }
+            }
+
+            Log($"Sheet index built: workbook={context.WorkbookName}, sheet={context.SheetName}, headerRow={context.HeaderRow}, firstDataRow={context.FirstDataRow}, uidColumn={uidColumn}, nameColumn={nameColumn}, indexedUids={uidToRow.Count}, indexedNames={uniqueNameToRow.Count}, matchConfig={DescribeMatchConfiguration(configuration)}.");
+
+            return new ExcelSheetIndex
+            {
+                WorkbookName = context.WorkbookName,
+                SheetName = context.SheetName,
+                HeaderRow = context.HeaderRow,
+                FirstDataRow = context.FirstDataRow,
+                UsedRows = context.UsedRows,
+                UsedColumns = context.UsedColumns,
+                UidColumn = uidColumn,
+                NameColumn = nameColumn,
+                Headers = headers,
+                RowToUid = rowToUid,
+                UidToRow = uidToRow,
+                RowToName = rowToName,
+                UniqueNameToRow = uniqueNameToRow,
+                NameToRows = nameToRows
+            };
+        }
+
+        private object[,] ReadExcelColumnValues(dynamic worksheet, int column, int startRow, int endRow)
+        {
+            if (column < 1 || startRow < 1 || endRow < startRow)
+                return null;
+
+            try
+            {
+                dynamic topCell = worksheet.Cells[startRow, column];
+                dynamic bottomCell = worksheet.Cells[endRow, column];
+                dynamic range = worksheet.Range[topCell, bottomCell];
+                object values = range.Value2;
+                if (values is object[,] arrayValues)
+                    return arrayValues;
+
+                var singleValueArray = new object[endRow - startRow + 1, 1];
+                singleValueArray[0, 0] = values;
+                return singleValueArray;
+            }
+            catch (Exception ex)
+            {
+                Log($"ReadExcelColumnValues failed for column {column}, rows {startRow}-{endRow}: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+
+        private string GetRangeValueText(object[,] values, int oneBasedIndex)
+        {
+            if (values == null)
+                return string.Empty;
+
+            try
+            {
+                object value = values[oneBasedIndex, 1];
+                return value == null ? string.Empty : Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+            catch
+            {
+                try
+                {
+                    object value = values[oneBasedIndex - 1, 0];
+                    return value == null ? string.Empty : Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+                }
+                catch
+                {
+                    return string.Empty;
+                }
             }
         }
 
@@ -1063,8 +2202,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         {
             Log("Project Linker shutting down.");
             try { _app.WindowSelectionChange -= App_WindowSelectionChange; } catch { }
-            _pollTimer.Stop();
-            _pollTimer.Dispose();
+            _heartbeatTimer.Stop();
+            _heartbeatTimer.Dispose();
+            UnbindExcelEvents();
             ClearHighlights();
 
             if (_form != null && !_form.IsDisposed)
@@ -1085,19 +2225,46 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             Log(message);
         }
 
-        private void Log(string message)
+        private void ResetDiagnosticsSession(AJProjectLinkerMode mode)
         {
+            if (!_diagnosticsEnabled)
+                return;
+
             try
             {
-                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}";
-                lock (_logSync)
+                lock (_diagnosticsSync)
                 {
-                    File.AppendAllText(_logPath, line);
+                    File.WriteAllText(
+                        _diagnosticsPath,
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Project Linker diagnostics started. Mode={GetModeDisplayText(mode)}{Environment.NewLine}");
                 }
             }
             catch
             {
             }
+        }
+
+        private void TraceDiagnostic(string message)
+        {
+            if (!_diagnosticsEnabled)
+                return;
+
+            try
+            {
+                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}";
+                lock (_diagnosticsSync)
+                {
+                    File.AppendAllText(_diagnosticsPath, line);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private void Log(string message)
+        {
+            return;
         }
 
         private string SafeWindowCaption(MSProject.Window window)
@@ -1126,11 +2293,13 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private class ExcelContext
         {
-            public dynamic ExcelApp { get; set; }
-            public dynamic Workbook { get; set; }
-            public dynamic Worksheet { get; set; }
+            public Excel.Application ExcelApp { get; set; }
+            public Excel.Workbook Workbook { get; set; }
+            public Excel.Worksheet Worksheet { get; set; }
             public string WorkbookName { get; set; }
             public string SheetName { get; set; }
+            public int HeaderRow { get; set; }
+            public int FirstDataRow { get; set; }
             public int Row { get; set; }
             public int Column { get; set; }
             public string ActiveCellText { get; set; }
@@ -1141,7 +2310,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private class ExcelHighlightState
         {
             public dynamic Worksheet { get; set; }
+            public string WorkbookName { get; set; }
             public int Row { get; set; }
+            public int Color { get; set; }
             public Dictionary<int, ExcelCellFillState> PreviousFills { get; set; }
         }
 
@@ -1154,8 +2325,63 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private class ProjectTaskMatch
         {
+            public int UniqueId { get; set; }
+            public string TaskName { get; set; }
             public MSProject.Task Task { get; set; }
             public string MatchText { get; set; }
         }
+
+        private class ProjectHighlightState
+        {
+            public int ProjectUid { get; set; }
+            public string TaskName { get; set; }
+            public int ProjectRow { get; set; }
+            public int Color { get; set; }
+        }
+
+        private class ExcelSheetIndex
+        {
+            public string WorkbookName { get; set; }
+            public string SheetName { get; set; }
+            public int HeaderRow { get; set; }
+            public int FirstDataRow { get; set; }
+            public int UsedRows { get; set; }
+            public int UsedColumns { get; set; }
+            public int UidColumn { get; set; }
+            public int NameColumn { get; set; }
+            public Dictionary<int, string> Headers { get; set; }
+            public Dictionary<int, long> RowToUid { get; set; }
+            public Dictionary<long, int> UidToRow { get; set; }
+            public Dictionary<int, string> RowToName { get; set; }
+            public Dictionary<string, int> UniqueNameToRow { get; set; }
+            public Dictionary<string, List<int>> NameToRows { get; set; }
+        }
+
+        private class ProjectFocusResult
+        {
+            public bool Success { get; set; }
+            public MSProject.Task SelectedTask { get; set; }
+            public string SelectionSource { get; set; }
+            public int ProjectRow { get; set; }
+
+            public static ProjectFocusResult Succeeded(MSProject.Task task, string source, int projectRow) =>
+                new ProjectFocusResult
+                {
+                    Success = true,
+                    SelectedTask = task,
+                    SelectionSource = source ?? string.Empty,
+                    ProjectRow = projectRow
+                };
+
+            public static ProjectFocusResult Failed(MSProject.Task task, string source) =>
+                new ProjectFocusResult
+                {
+                    Success = false,
+                    SelectedTask = task,
+                    SelectionSource = source ?? string.Empty,
+                    ProjectRow = -1
+                };
+        }
+
     }
 }

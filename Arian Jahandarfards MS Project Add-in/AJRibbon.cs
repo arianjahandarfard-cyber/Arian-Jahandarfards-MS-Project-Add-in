@@ -9,7 +9,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
     public partial class AJRibbon : RibbonBase
     {
         private AJMilestoneTracker Tracker => Globals.ThisAddIn._tracker;
-        private const string DynamicStatusButtonLabel = "Create Dynamic Status Sheet 2.5";
+        private const string DynamicStatusButtonLabel = "Create Dynamic Status Sheet 5.2";
         private const string YellowOption = "Yellow";
         private const string GreenOption = "Green";
         private const string BlueOption = "Blue";

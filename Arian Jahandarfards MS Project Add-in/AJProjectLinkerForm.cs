@@ -19,21 +19,43 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private readonly Color NavyDark = Color.FromArgb(0, 13, 31);
         private readonly Color NavyBody = Color.FromArgb(4, 18, 41);
         private readonly Color BlueAccent = Color.FromArgb(0, 146, 231);
+        private readonly Color ErrorDark = Color.FromArgb(42, 10, 16);
+        private readonly Color ErrorBody = Color.FromArgb(63, 15, 24);
+        private readonly Color ErrorAccent = Color.FromArgb(214, 81, 81);
         private readonly Color White = Color.White;
         private readonly Color WhiteSoft = Color.FromArgb(220, 234, 250);
         private readonly Color GreenOn = Color.FromArgb(55, 190, 110);
         private readonly Color RedOff = Color.FromArgb(220, 78, 78);
+        private const int PanelWidth = 200;
+        private const int OneLinePanelHeight = 68;
+        private const int HeaderHeight = 24;
+        private const int AccentHeight = 1;
+        private const int StatusTop = 46;
+        private const int DividerTop = 42;
+        private const int StatusBottomPadding = 8;
 
+        private Panel shell;
+        private Panel header;
+        private Panel accentLine;
+        private Panel body;
+        private Panel divider;
+        private Label lblTitle;
+        private Label lblMode;
         private Label lblModeValue;
+        private Label lblPower;
         private Label lblPowerValue;
         private Panel pnlPowerDot;
         private Label lblStatus;
+        private Button btnClose;
+        private bool _hasUserMoved;
+        private bool _isProgrammaticMove;
 
         public event EventHandler CloseRequested;
 
         public AJProjectLinkerForm()
         {
             BuildUi();
+            Move += AJProjectLinkerForm_Move;
         }
 
         public void SetModeText(string modeText)
@@ -60,29 +82,29 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             lblPowerValue.ForeColor = isOn ? GreenOn : RedOff;
         }
 
-        public void UpdateStatus(string text)
+        public void UpdateStatus(string text, bool isError)
         {
             if (InvokeRequired)
             {
-                BeginInvoke(new Action<string>(UpdateStatus), text);
+                BeginInvoke(new Action<string, bool>(UpdateStatus), text, isError);
                 return;
             }
 
             lblStatus.Text = text;
+            ApplyTheme(isError);
+            AdjustSizeForStatus(text);
         }
 
         private void BuildUi()
         {
             SuspendLayout();
 
-            const int panelWidth = 200;
-            const int panelHeight = 70;
             const int panelPadding = 8;
-            int rightEdge = panelWidth - panelPadding;
-            int contentWidth = panelWidth - (panelPadding * 2);
+            int rightEdge = PanelWidth - panelPadding;
+            int contentWidth = PanelWidth - (panelPadding * 2);
 
             Text = "Project Linker";
-            ClientSize = new Size(panelWidth, panelHeight);
+            ClientSize = new Size(PanelWidth, OneLinePanelHeight);
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
@@ -100,32 +122,33 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
             var toolTip = new ToolTip();
 
-            var shell = new Panel
+            shell = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = NavyBody
             };
             Controls.Add(shell);
 
-            var header = new Panel
+            header = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 24,
+                Height = HeaderHeight,
                 BackColor = NavyDark
             };
             header.MouseDown += Header_MouseDown;
             shell.Controls.Add(header);
 
-            var title = new Label
+            lblTitle = new Label
             {
                 Text = "Project Linker",
                 ForeColor = White,
                 Font = new Font("Segoe UI", 8.3f, FontStyle.Bold),
                 AutoSize = true,
-                Location = new Point(34, 5)
+                Location = new Point(34, 5),
+                BackColor = Color.Transparent
             };
-            title.MouseDown += Header_MouseDown;
-            header.Controls.Add(title);
+            lblTitle.MouseDown += Header_MouseDown;
+            header.Controls.Add(lblTitle);
 
             var logo = CreateLogoPictureBox();
             if (logo != null)
@@ -134,7 +157,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 logo.BringToFront();
             }
 
-            var btnClose = new Button
+            btnClose = new Button
             {
                 Text = "X",
                 FlatStyle = FlatStyle.Flat,
@@ -153,29 +176,29 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             };
             header.Controls.Add(btnClose);
 
-            var accentLine = new Panel
+            accentLine = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 1,
+                Height = AccentHeight,
                 BackColor = BlueAccent
             };
             shell.Controls.Add(accentLine);
 
-            var body = new Panel
+            body = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = NavyBody
             };
             shell.Controls.Add(body);
 
-            var lblMode = new Label
+            lblMode = new Label
             {
                 Text = "Mode",
                 AutoSize = true,
                 Font = new Font("Segoe UI", 6.7f),
                 ForeColor = WhiteSoft,
                 Location = new Point(10, 8),
-                BackColor = NavyBody
+                BackColor = Color.Transparent
             };
             body.Controls.Add(lblMode);
 
@@ -186,7 +209,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 ForeColor = White,
                 Location = new Point(52, 6),
-                BackColor = NavyBody
+                BackColor = Color.Transparent
             };
             body.Controls.Add(lblModeValue);
             toolTip.SetToolTip(lblModeValue, "Excel: click a row in Excel to jump to the matching Project task. Excel + Project: also follow the current Project selection back to Excel.");
@@ -199,14 +222,14 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             };
             body.Controls.Add(pnlPowerDot);
 
-            var lblPower = new Label
+            lblPower = new Label
             {
                 Text = "Status",
                 AutoSize = true,
                 Font = new Font("Segoe UI", 6.7f),
                 ForeColor = WhiteSoft,
                 Location = new Point(50, 24),
-                BackColor = NavyBody
+                BackColor = Color.Transparent
             };
             body.Controls.Add(lblPower);
 
@@ -217,13 +240,13 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 Font = new Font("Segoe UI", 6.7f, FontStyle.Bold),
                 ForeColor = GreenOn,
                 Location = new Point(88, 24),
-                BackColor = NavyBody
+                BackColor = Color.Transparent
             };
             body.Controls.Add(lblPowerValue);
 
-            var divider = new Panel
+            divider = new Panel
             {
-                Location = new Point(8, 39),
+                Location = new Point(8, DividerTop),
                 Size = new Size(contentWidth, 1),
                 BackColor = Color.FromArgb(24, 49, 88)
             };
@@ -234,14 +257,83 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 Text = "Project Linker is on.",
                 AutoSize = false,
                 Size = new Size(contentWidth - 2, 24),
-                Location = new Point(10, 44),
+                Location = new Point(10, StatusTop),
                 Font = new Font("Segoe UI", 6.8f, FontStyle.Bold),
                 ForeColor = White,
-                BackColor = NavyBody
+                BackColor = Color.Transparent
             };
             body.Controls.Add(lblStatus);
 
+            ApplyTheme(false);
+            AdjustSizeForStatus(lblStatus.Text);
             ResumeLayout(false);
+        }
+
+        private void ApplyTheme(bool isError)
+        {
+            Color frameColor = isError ? ErrorAccent : BlueAccent;
+            Color headerColor = isError ? ErrorBody : NavyDark;
+            Color bodyColor = isError ? ErrorBody : NavyBody;
+            Color dividerColor = isError ? Color.FromArgb(110, 44, 55) : Color.FromArgb(24, 49, 88);
+
+            BackColor = frameColor;
+            shell.BackColor = bodyColor;
+            header.BackColor = headerColor;
+            accentLine.BackColor = frameColor;
+            body.BackColor = bodyColor;
+            divider.BackColor = dividerColor;
+            btnClose.BackColor = headerColor;
+            lblTitle.ForeColor = White;
+            lblMode.ForeColor = WhiteSoft;
+            lblModeValue.ForeColor = White;
+            lblPower.ForeColor = WhiteSoft;
+            lblStatus.ForeColor = White;
+        }
+
+        private void AdjustSizeForStatus(string text)
+        {
+            if (lblStatus == null)
+                return;
+
+            Size measured = TextRenderer.MeasureText(
+                text ?? string.Empty,
+                lblStatus.Font,
+                new Size(lblStatus.Width, int.MaxValue),
+                TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+
+            int statusHeight = Math.Max(16, measured.Height);
+            lblStatus.Height = statusHeight;
+
+            int panelHeight = Math.Max(OneLinePanelHeight, StatusTop + statusHeight + StatusBottomPadding);
+            if (ClientSize.Height != panelHeight)
+                ClientSize = new Size(PanelWidth, panelHeight);
+
+            if (!_hasUserMoved)
+                PositionBottomRight();
+        }
+
+        private void PositionBottomRight()
+        {
+            Rectangle screen = Screen.PrimaryScreen.WorkingArea;
+            _isProgrammaticMove = true;
+            try
+            {
+                Location = new Point(
+                    screen.Right - Width - 16,
+                    screen.Bottom - Height - 16);
+            }
+            finally
+            {
+                _isProgrammaticMove = false;
+            }
+        }
+
+        private void AJProjectLinkerForm_Move(object sender, EventArgs e)
+        {
+            if (_isProgrammaticMove)
+                return;
+
+            _hasUserMoved = true;
         }
 
         private PictureBox CreateLogoPictureBox()

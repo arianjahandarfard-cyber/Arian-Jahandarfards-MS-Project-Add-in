@@ -71,6 +71,7 @@ jobs:
           $version = "${{ steps.get_version.outputs.VERSION }}"
           $src = "$env:GITHUB_WORKSPACE"
           wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$src"
+          Copy-Item "AJAddIn.msi" "AJAddIn-v$version.msi" -Force
           Write-Host "MSI size: $((Get-Item AJAddIn.msi).Length) bytes"
           Write-Host "MSI files:"
           $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -115,7 +116,7 @@ jobs:
           $msiName = "AJAddIn-v$version.msi"
           $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
           $ctx = New-AzStorageContext -ConnectionString $connStr
-          Set-AzStorageBlobContent -File "AJAddIn.msi" -Container "releases" -Blob $msiName -Context $ctx -Force
+          Set-AzStorageBlobContent -File $msiName -Container "releases" -Blob $msiName -Context $ctx -Force
 
       - name: Upload installer bundle to Azure Blob
         shell: pwsh
@@ -148,3 +149,14 @@ jobs:
           git add version.json
           git commit -m "Auto-update to v$version"
           git push
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: v${{ steps.get_version.outputs.VERSION }}
+          body: Release v${{ steps.get_version.outputs.VERSION }}
+          files: |
+            AJAddIn-v${{ steps.get_version.outputs.VERSION }}.zip
+            AJAddIn-v${{ steps.get_version.outputs.VERSION }}.msi
+            AJToolsInstaller-v${{ steps.get_version.outputs.VERSION }}.zip

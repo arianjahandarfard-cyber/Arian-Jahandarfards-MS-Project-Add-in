@@ -45,6 +45,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private int _currentHighlightRow = -1;
         private int _currentHighlightProjectUid = -1;
         private ExcelSheetIndex _sheetIndexCache;
+        private ProjectTaskNameIndex _projectTaskNameIndex;
         private Excel.Application _excelApp;
         private int _excelAppHwnd;
         private DateTime _ignoreExcelSelectionEventsUntilUtc = DateTime.MinValue;
@@ -80,6 +81,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _mode = mode;
             HidePanel();
             ResetTracking();
+            InvalidateProjectTaskNameIndex();
             ResetDiagnosticsSession(mode);
             Log($"Mode changed to {GetModeDisplayText(mode)}.");
             var excelApp = EnsureExcelBinding();
@@ -363,8 +365,23 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             if (index == null)
                 return null;
 
+            ProjectLinkerMatchConfiguration configuration = GetEffectiveMatchConfiguration(context);
             var uidCandidates = new List<long>();
             var nameCandidates = new List<string>();
+
+            if (configuration.UseUniqueId &&
+                configuration.UniqueIdColumn >= 1 &&
+                configuration.UniqueIdColumn <= context.UsedColumns)
+            {
+                AddUidCandidate(GetCellText(context.Worksheet.Cells[context.Row, configuration.UniqueIdColumn]), uidCandidates, prioritize: true);
+            }
+
+            if (configuration.UseTaskName &&
+                configuration.TaskNameColumn >= 1 &&
+                configuration.TaskNameColumn <= context.UsedColumns)
+            {
+                AddNameCandidate(GetCellText(context.Worksheet.Cells[context.Row, configuration.TaskNameColumn]), nameCandidates, prioritize: true);
+            }
 
             if (index.RowToUid.TryGetValue(context.Row, out long rowUid))
                 AddUidCandidate(rowUid, uidCandidates);
@@ -403,7 +420,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
             foreach (string name in OrderNameCandidates(nameCandidates))
             {
-                MSProject.Task task = FindUniqueTaskByName(name);
+                MSProject.Task task = FindUniqueTaskByName(name) ?? FindFirstTaskByName(name);
                 if (task != null)
                 {
                     return new ProjectTaskMatch
@@ -425,23 +442,28 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             if (index == null)
                 return -1;
 
-            if (index.UidToRow.TryGetValue(task.UniqueID, out int uidRow))
+            ProjectLinkerMatchConfiguration configuration = GetEffectiveMatchConfiguration(context);
+            if (configuration.UseUniqueId && index.UidToRow.TryGetValue(task.UniqueID, out int uidRow))
                 return uidRow;
 
-            if (index.UniqueNameToRow.TryGetValue(task.Name.Trim(), out int nameRow))
+            string taskName = task.Name?.Trim();
+            if (configuration.UseTaskName && !string.IsNullOrWhiteSpace(taskName) && index.UniqueNameToRow.TryGetValue(taskName, out int nameRow))
                 return nameRow;
 
-            if (index.NameToRows.TryGetValue(task.Name.Trim(), out List<int> duplicateNameRows))
+            if (configuration.UseTaskName && !string.IsNullOrWhiteSpace(taskName) && index.NameToRows.TryGetValue(taskName, out List<int> duplicateNameRows))
             {
                 Log($"Ambiguous Excel row match for Project task '{task.Name}' (UID {task.UniqueID}). Matching rows: {string.Join(", ", duplicateNameRows)}.");
+                if (duplicateNameRows.Count > 0)
+                    return duplicateNameRows[0];
             }
 
             for (int row = context.FirstDataRow; row <= context.UsedRows; row++)
             {
-                if (index.RowToUid.TryGetValue(row, out long uid) && uid == task.UniqueID)
+                if (configuration.UseUniqueId && index.RowToUid.TryGetValue(row, out long uid) && uid == task.UniqueID)
                     return row;
 
-                if (index.RowToName.TryGetValue(row, out string rowName) &&
+                if (configuration.UseTaskName &&
+                    index.RowToName.TryGetValue(row, out string rowName) &&
                     string.Equals(rowName, task.Name.Trim(), StringComparison.OrdinalIgnoreCase))
                 {
                     return row;
@@ -546,61 +568,22 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             if (string.IsNullOrWhiteSpace(name))
                 return null;
 
-            var matches = new List<MSProject.Task>();
+            ProjectTaskNameIndex index = GetProjectTaskNameIndex();
+            if (index == null)
+                return null;
 
-            for (int attempt = 1; attempt <= 3; attempt++)
+            string normalized = NormalizeTaskNameKey(name);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return null;
+
+            if (index.DuplicateNameUids.TryGetValue(normalized, out List<int> duplicateUids) && duplicateUids.Count > 1)
             {
-                try
-                {
-                    MSProject.Project activeProject = _app.ActiveProject;
-                    MSProject.Tasks tasks = activeProject?.Tasks;
-                    if (tasks == null)
-                    {
-                        Log($"FindUniqueTaskByName('{name}') could not read ActiveProject.Tasks.");
-                        return null;
-                    }
-
-                    int count = Convert.ToInt32(tasks.Count, CultureInfo.InvariantCulture);
-                    for (int index = 1; index <= count; index++)
-                    {
-                        MSProject.Task task = null;
-                        try
-                        {
-                            task = tasks[index];
-                        }
-                        catch (Exception itemEx)
-                        {
-                            Log($"FindUniqueTaskByName('{name}') could not read Tasks[{index}]: {itemEx.GetType().Name}: {itemEx.Message}");
-                        }
-
-                        if (task == null || string.IsNullOrWhiteSpace(task.Name))
-                            continue;
-
-                        if (string.Equals(task.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))
-                            matches.Add(task);
-                    }
-
-                    break;
-                }
-                catch (COMException ex) when (IsProjectBusy(ex))
-                {
-                    Log($"FindUniqueTaskByName('{name}') attempt {attempt} hit busy Project state: {ex.Message}");
-                    System.Threading.Thread.Sleep(75 * attempt);
-                }
-                catch (Exception ex)
-                {
-                    Log($"FindUniqueTaskByName('{name}') failed: {ex.GetType().Name}: {ex.Message}");
-                    return null;
-                }
+                Log($"Ambiguous Project task name match for '{name}'. Matching UIDs: {string.Join(", ", duplicateUids)}.");
+                return null;
             }
 
-            if (matches.Count == 1)
-                return matches[0];
-
-            if (matches.Count > 1)
-                Log($"Ambiguous Project task name match for '{name}'. Matching UIDs: {string.Join(", ", matches.ConvertAll(task => task.UniqueID.ToString(CultureInfo.InvariantCulture)))}.");
-
-            return null;
+            index.UniqueNameToTask.TryGetValue(normalized, out MSProject.Task match);
+            return match;
         }
 
         private MSProject.Task TryGetActiveTask(dynamic selection = null)
@@ -779,22 +762,24 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
             catch { }
 
-            try
-            {
-                object rawRow = cell.Row;
-                if (rawRow != null)
-                {
-                    int row = Convert.ToInt32(rawRow, CultureInfo.InvariantCulture);
-                    if (row > 0)
-                    {
-                        source = sourcePrefix + ".Row";
-                        return _app.ActiveProject.Tasks[row];
-                    }
-                }
-            }
-            catch { }
-
             return null;
+        }
+
+        private MSProject.Task FindFirstTaskByName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return null;
+
+            ProjectTaskNameIndex index = GetProjectTaskNameIndex();
+            if (index == null)
+                return null;
+
+            string normalized = NormalizeTaskNameKey(name);
+            if (string.IsNullOrWhiteSpace(normalized))
+                return null;
+
+            index.FirstNameToTask.TryGetValue(normalized, out MSProject.Task match);
+            return match;
         }
 
         private Excel.Application TryGetRunningExcel()
@@ -960,6 +945,126 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             {
                 return string.Empty;
             }
+        }
+
+        private void InvalidateProjectTaskNameIndex()
+        {
+            _projectTaskNameIndex = null;
+        }
+
+        private ProjectTaskNameIndex GetProjectTaskNameIndex()
+        {
+            try
+            {
+                MSProject.Project activeProject = _app.ActiveProject;
+                if (activeProject == null)
+                    return null;
+
+                string projectKey = GetActiveProjectKey(activeProject);
+                if (_projectTaskNameIndex != null &&
+                    string.Equals(_projectTaskNameIndex.ProjectKey, projectKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return _projectTaskNameIndex;
+                }
+
+                _projectTaskNameIndex = BuildProjectTaskNameIndex(activeProject, projectKey);
+                return _projectTaskNameIndex;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private ProjectTaskNameIndex BuildProjectTaskNameIndex(MSProject.Project activeProject, string projectKey)
+        {
+            var uniqueNameToTask = new Dictionary<string, MSProject.Task>(StringComparer.OrdinalIgnoreCase);
+            var firstNameToTask = new Dictionary<string, MSProject.Task>(StringComparer.OrdinalIgnoreCase);
+            var duplicateNameUids = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    MSProject.Tasks tasks = activeProject?.Tasks;
+                    if (tasks == null)
+                        return null;
+
+                    int count = Convert.ToInt32(tasks.Count, CultureInfo.InvariantCulture);
+                    for (int index = 1; index <= count; index++)
+                    {
+                        MSProject.Task task = null;
+                        try
+                        {
+                            task = tasks[index];
+                        }
+                        catch
+                        {
+                        }
+
+                        if (task == null || string.IsNullOrWhiteSpace(task.Name))
+                            continue;
+
+                        string key = NormalizeTaskNameKey(task.Name);
+                        if (string.IsNullOrWhiteSpace(key))
+                            continue;
+
+                        if (!firstNameToTask.ContainsKey(key))
+                            firstNameToTask[key] = task;
+
+                        if (!uniqueNameToTask.TryGetValue(key, out MSProject.Task existingTask))
+                        {
+                            uniqueNameToTask[key] = task;
+                            continue;
+                        }
+
+                        if (!duplicateNameUids.TryGetValue(key, out List<int> duplicates))
+                        {
+                            duplicates = new List<int>();
+                            duplicateNameUids[key] = duplicates;
+                            if (existingTask != null)
+                                duplicates.Add(existingTask.UniqueID);
+                        }
+
+                        duplicates.Add(task.UniqueID);
+                        uniqueNameToTask.Remove(key);
+                    }
+
+                    return new ProjectTaskNameIndex
+                    {
+                        ProjectKey = projectKey,
+                        UniqueNameToTask = uniqueNameToTask,
+                        FirstNameToTask = firstNameToTask,
+                        DuplicateNameUids = duplicateNameUids
+                    };
+                }
+                catch (COMException ex) when (IsProjectBusy(ex))
+                {
+                    System.Threading.Thread.Sleep(75 * attempt);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
+        private string GetActiveProjectKey(MSProject.Project activeProject)
+        {
+            string fullName = string.Empty;
+            string name = string.Empty;
+
+            try { fullName = activeProject?.FullName ?? string.Empty; } catch { }
+            try { name = activeProject?.Name ?? string.Empty; } catch { }
+
+            return (fullName + "|" + name).Trim();
+        }
+
+        private string NormalizeTaskNameKey(string name)
+        {
+            return (name ?? string.Empty).Trim();
         }
 
         private void AddUidCandidate(string rawText, List<long> uidCandidates, bool prioritize = false)
@@ -1250,6 +1355,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             UnbindExcelEvents();
             ResetTracking();
             InvalidateSheetIndex("Project Linker deactivated.");
+            InvalidateProjectTaskNameIndex();
 
             if (clearActiveHighlights)
                 ClearHighlights();
@@ -1302,7 +1408,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 if (_activeProjectHighlight != null &&
                     _activeProjectHighlight.ProjectUid == _currentHighlightProjectUid)
                 {
-                    focusResult = ProjectFocusResult.Succeeded(task, "StoredHighlight", -1);
+                    focusResult = ProjectFocusResult.Succeeded(task, "StoredHighlight");
                 }
                 else
                 {
@@ -1335,7 +1441,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 _activeProjectHighlight.ProjectUid == focusResult.SelectedTask.UniqueID &&
                 _activeProjectHighlight.Color == highlightColor;
 
-            TraceDiagnostic($"HIGHLIGHT_APPLY uid={focusResult.SelectedTask.UniqueID}, excelRow={row}, sameExcelTarget={sameExcelTarget}, sameProjectTarget={sameProjectTarget}, projectRow={focusResult.ProjectRow}.");
+            TraceDiagnostic($"HIGHLIGHT_APPLY uid={focusResult.SelectedTask.UniqueID}, excelRow={row}, sameExcelTarget={sameExcelTarget}, sameProjectTarget={sameProjectTarget}.");
 
             if (!sameExcelTarget)
             {
@@ -1462,28 +1568,21 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
             try
             {
-                _app.ScreenUpdating = false;
                 SuppressProjectSelectionEvents(350, $"Apply Project highlight UID {focusResult.SelectedTask.UniqueID}");
 
                 if (previousHighlight != null &&
-                    previousHighlight.ProjectRow > 0 &&
                     (previousHighlight.ProjectUid != focusResult.SelectedTask.UniqueID || previousHighlight.Color != ColorTranslator.ToOle(_highlightColor)))
                 {
-                    TraceDiagnostic($"HIGHLIGHT_CLEAR uid={previousHighlight.ProjectUid}, projectRow={previousHighlight.ProjectRow}.");
-                    TrySelectProjectTaskNameField(previousHighlight.ProjectRow, null);
-                    _app.Font32Ex(CellColor: -16777216);
+                    TraceDiagnostic($"HIGHLIGHT_CLEAR uid={previousHighlight.ProjectUid}.");
+                    PaintProjectTaskNameCellByUid(previousHighlight.ProjectUid, -16777216);
                 }
 
-                if (focusResult.ProjectRow > 0)
-                    TrySelectProjectTaskNameField(focusResult.ProjectRow, focusResult.SelectedTask);
-                else
-                    TrySelectCurrentProjectTaskNameField(focusResult.SelectedTask);
-                _app.Font32Ex(CellColor: ColorTranslator.ToOle(_highlightColor));
+                if (!PaintProjectTaskNameCellByUid(focusResult.SelectedTask.UniqueID, ColorTranslator.ToOle(_highlightColor)))
+                    return;
+
                 _activeProjectHighlight = new ProjectHighlightState
                 {
                     ProjectUid = focusResult.SelectedTask.UniqueID,
-                    TaskName = focusResult.SelectedTask.Name,
-                    ProjectRow = focusResult.ProjectRow,
                     Color = ColorTranslator.ToOle(_highlightColor)
                 };
             }
@@ -1491,10 +1590,6 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             {
                 Log($"Apply Project highlight failed for UID {focusResult.SelectedTask.UniqueID}: {ex.GetType().Name}: {ex.Message}");
                 _activeProjectHighlight = previousHighlight;
-            }
-            finally
-            {
-                try { _app.ScreenUpdating = true; } catch { }
             }
         }
 
@@ -1505,28 +1600,16 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
             ProjectHighlightState highlight = _activeProjectHighlight;
             _activeProjectHighlight = null;
-            TraceDiagnostic($"HIGHLIGHT_CLEAR uid={highlight.ProjectUid}, projectRow={highlight.ProjectRow}.");
+            TraceDiagnostic($"HIGHLIGHT_CLEAR uid={highlight.ProjectUid}.");
 
             try
             {
-                _app.ScreenUpdating = false;
-                if (highlight.ProjectRow < 1)
-                {
-                    Log($"Clear Project highlight skipped because UID {highlight.ProjectUid} had no stored project row.");
-                    return;
-                }
-
                 SuppressProjectSelectionEvents(350, $"Clear Project highlight UID {highlight.ProjectUid}");
-                TrySelectProjectTaskNameField(highlight.ProjectRow, null);
-                _app.Font32Ex(CellColor: -16777216);
+                PaintProjectTaskNameCellByUid(highlight.ProjectUid, -16777216);
             }
             catch (Exception ex)
             {
                 Log($"Clear Project highlight failed for prior UID {highlight.ProjectUid}: {ex.GetType().Name}: {ex.Message}");
-            }
-            finally
-            {
-                try { _app.ScreenUpdating = true; } catch { }
             }
         }
 
@@ -1665,9 +1748,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 return ProjectFocusResult.Failed(selectedTask, source);
             }
 
-            int projectRow = ResolveProjectRow(selectedTask, $"{stageLabel} confirmation");
-            Log($"Project focus confirmed: stage={stageLabel}, expectedUid={uid}, actualUid={selectedTask.UniqueID}, actualName={selectedTask.Name}, projectRow={projectRow}, source={source}, before={beforeSelection}, afterFind={afterFind}.");
-            return ProjectFocusResult.Succeeded(selectedTask, source, projectRow);
+            Log($"Project focus confirmed: stage={stageLabel}, expectedUid={uid}, actualUid={selectedTask.UniqueID}, actualName={selectedTask.Name}, source={source}, before={beforeSelection}, afterFind={afterFind}.");
+            return ProjectFocusResult.Succeeded(selectedTask, source);
         }
 
         private void PrepareProjectViewForTaskNavigation()
@@ -1714,36 +1796,60 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             return errorCode == RpcServerCallRetryLater || errorCode == ApplicationBusy;
         }
 
-        private void TrySelectProjectTaskNameField(int projectRow, MSProject.Task task)
+        private bool PaintProjectTaskNameCellByUid(int expectedUid, int cellColor)
         {
-            if (projectRow < 1)
-                return;
-
             try
             {
-                _app.SelectTaskField(Row: projectRow, Column: "Name", RowRelative: false);
+                var focusResult = FocusProjectTask(expectedUid, suppressSelectionEvents: false, reason: $"Paint highlight UID {expectedUid}", logFailures: false);
+                if (!focusResult.Success || focusResult.SelectedTask == null)
+                    return false;
+
+                _app.SelectTaskField(Row: 0, Column: "Name", RowRelative: true);
+                if (!IsActiveCellOnUid(expectedUid))
+                    return false;
+
+                _app.Font32Ex(CellColor: cellColor);
+                return true;
             }
             catch (Exception ex)
             {
-                string taskInfo = task == null
-                    ? "unknown task"
-                    : $"UID {task.UniqueID}, ID {task.ID}";
-                Log($"SelectTaskField(Name) failed for row {projectRow} ({taskInfo}): {ex.GetType().Name}: {ex.Message}");
+                Log($"PaintProjectTaskNameCellByUid({expectedUid}) failed: {ex.GetType().Name}: {ex.Message}");
+                return false;
             }
         }
 
-        private void TrySelectCurrentProjectTaskNameField(MSProject.Task task)
+        private bool IsActiveCellOnUid(int expectedUid)
         {
             try
             {
-                _app.SelectTaskField(Row: 0, Column: "Name", RowRelative: true);
+                dynamic selection = SafeGetSelection();
+                MSProject.Selection typedSelection = selection as MSProject.Selection;
+                if (typedSelection?.Tasks != null)
+                {
+                    try
+                    {
+                        MSProject.Task selectedTask = typedSelection.Tasks[1];
+                        if (selectedTask != null && selectedTask.UniqueID == expectedUid)
+                            return true;
+                    }
+                    catch
+                    {
+                    }
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                string taskInfo = task == null
-                    ? "unknown task"
-                    : $"UID {task.UniqueID}, ID {task.ID}";
-                Log($"SelectTaskField(Name current row) failed ({taskInfo}): {ex.GetType().Name}: {ex.Message}");
+            }
+
+            try
+            {
+                dynamic activeCell = _app.ActiveCell;
+                MSProject.Task activeCellTask = activeCell?.Task as MSProject.Task;
+                return activeCellTask != null && activeCellTask.UniqueID == expectedUid;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -1753,11 +1859,10 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             {
                 string source;
                 MSProject.Task task = TryGetActiveTask(null, null, out source);
-                int row = GetCurrentProjectVisibleRow();
                 if (task == null)
-                    return $"{stage}: uid=<none>, row={row}, source={source}";
+                    return $"{stage}: uid=<none>, source={source}";
 
-                return $"{stage}: uid={task.UniqueID}, id={task.ID}, row={row}, name={task.Name}, source={source}";
+                return $"{stage}: uid={task.UniqueID}, id={task.ID}, name={task.Name}, source={source}";
             }
             catch (Exception ex)
             {
@@ -1765,48 +1870,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             }
         }
 
-        private int ResolveProjectRow(MSProject.Task task, string reason)
-        {
-            int activeCellRow = GetCurrentProjectVisibleRow();
-            if (activeCellRow > 0)
-                return activeCellRow;
-
-            if (task != null)
-            {
-                try
-                {
-                    if (task.ID > 0)
-                    {
-                        Log($"Project row fallback used for UID {task.UniqueID} ({task.Name}) during {reason}: ActiveCell row was unavailable, using task.ID {task.ID}.");
-                        return task.ID;
-                    }
-                }
-                catch
-                {
-                }
-            }
-
-            return -1;
-        }
-
-        private int GetCurrentProjectVisibleRow()
-        {
-            try
-            {
-                dynamic activeCell = _app.ActiveCell;
-                if (activeCell != null)
-                    return Convert.ToInt32(activeCell.Row, CultureInfo.InvariantCulture);
-            }
-            catch
-            {
-            }
-
-            return -1;
-        }
-
         private ProjectFocusResult CreateProjectFocusResultFromCurrentSelection(MSProject.Task task, string source)
         {
-            return ProjectFocusResult.Succeeded(task, source, ResolveProjectRow(task, source));
+            return ProjectFocusResult.Succeeded(task, source);
         }
 
         private bool TryPromptForMatchConfiguration(Excel.Application excelApp, bool forceShow)
@@ -1851,6 +1917,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 _matchConfiguration = form.ResultConfiguration;
                 SaveMatchConfiguration();
                 InvalidateSheetIndex("Project Linker match configuration updated.");
+                InvalidateProjectTaskNameIndex();
                 Log($"Project Linker match configuration saved: {DescribeMatchConfiguration(_matchConfiguration)}.");
                 SetStatus("Click anywhere in the Excel sheet to find the task.");
                 return HasUsableMatchConfiguration(context);
@@ -2036,27 +2103,31 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             if (context == null)
                 return null;
 
+            ProjectLinkerMatchConfiguration configuration = GetEffectiveMatchConfiguration(context);
             if (_sheetIndexCache != null &&
                 string.Equals(_sheetIndexCache.WorkbookName, context.WorkbookName, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(_sheetIndexCache.SheetName, context.SheetName, StringComparison.OrdinalIgnoreCase) &&
                 _sheetIndexCache.HeaderRow == context.HeaderRow &&
                 _sheetIndexCache.UsedRows == context.UsedRows &&
-                _sheetIndexCache.UsedColumns == context.UsedColumns)
+                _sheetIndexCache.UsedColumns == context.UsedColumns &&
+                _sheetIndexCache.UseUniqueId == configuration.UseUniqueId &&
+                _sheetIndexCache.UidColumn == configuration.UniqueIdColumn &&
+                _sheetIndexCache.UseTaskName == configuration.UseTaskName &&
+                _sheetIndexCache.NameColumn == configuration.TaskNameColumn)
             {
                 return _sheetIndexCache;
             }
 
-            _sheetIndexCache = BuildSheetIndex(context);
+            _sheetIndexCache = BuildSheetIndex(context, configuration);
             return _sheetIndexCache;
         }
 
-        private ExcelSheetIndex BuildSheetIndex(ExcelContext context)
+        private ExcelSheetIndex BuildSheetIndex(ExcelContext context, ProjectLinkerMatchConfiguration configuration)
         {
             var headers = new Dictionary<int, string>();
             for (int col = 1; col <= context.UsedColumns; col++)
                 headers[col] = GetCellText(context.Worksheet.Cells[context.HeaderRow, col]).Trim();
 
-            ProjectLinkerMatchConfiguration configuration = GetEffectiveMatchConfiguration(context);
             int uidColumn = configuration.UseUniqueId ? configuration.UniqueIdColumn : -1;
             int nameColumn = configuration.UseTaskName ? configuration.TaskNameColumn : -1;
             var rowToUid = new Dictionary<int, long>();
@@ -2116,7 +2187,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 FirstDataRow = context.FirstDataRow,
                 UsedRows = context.UsedRows,
                 UsedColumns = context.UsedColumns,
+                UseUniqueId = configuration.UseUniqueId,
                 UidColumn = uidColumn,
+                UseTaskName = configuration.UseTaskName,
                 NameColumn = nameColumn,
                 Headers = headers,
                 RowToUid = rowToUid,
@@ -2334,8 +2407,6 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private class ProjectHighlightState
         {
             public int ProjectUid { get; set; }
-            public string TaskName { get; set; }
-            public int ProjectRow { get; set; }
             public int Color { get; set; }
         }
 
@@ -2347,7 +2418,9 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             public int FirstDataRow { get; set; }
             public int UsedRows { get; set; }
             public int UsedColumns { get; set; }
+            public bool UseUniqueId { get; set; }
             public int UidColumn { get; set; }
+            public bool UseTaskName { get; set; }
             public int NameColumn { get; set; }
             public Dictionary<int, string> Headers { get; set; }
             public Dictionary<int, long> RowToUid { get; set; }
@@ -2357,20 +2430,26 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             public Dictionary<string, List<int>> NameToRows { get; set; }
         }
 
+        private class ProjectTaskNameIndex
+        {
+            public string ProjectKey { get; set; }
+            public Dictionary<string, MSProject.Task> UniqueNameToTask { get; set; }
+            public Dictionary<string, MSProject.Task> FirstNameToTask { get; set; }
+            public Dictionary<string, List<int>> DuplicateNameUids { get; set; }
+        }
+
         private class ProjectFocusResult
         {
             public bool Success { get; set; }
             public MSProject.Task SelectedTask { get; set; }
             public string SelectionSource { get; set; }
-            public int ProjectRow { get; set; }
 
-            public static ProjectFocusResult Succeeded(MSProject.Task task, string source, int projectRow) =>
+            public static ProjectFocusResult Succeeded(MSProject.Task task, string source) =>
                 new ProjectFocusResult
                 {
                     Success = true,
                     SelectedTask = task,
-                    SelectionSource = source ?? string.Empty,
-                    ProjectRow = projectRow
+                    SelectionSource = source ?? string.Empty
                 };
 
             public static ProjectFocusResult Failed(MSProject.Task task, string source) =>
@@ -2378,8 +2457,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
                 {
                     Success = false,
                     SelectedTask = task,
-                    SelectionSource = source ?? string.Empty,
-                    ProjectRow = -1
+                    SelectionSource = source ?? string.Empty
                 };
         }
 

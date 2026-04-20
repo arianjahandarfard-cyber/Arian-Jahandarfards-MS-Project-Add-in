@@ -169,7 +169,7 @@
             // btnDynamicStatusSheet
             // 
             this.btnDynamicStatusSheet.ControlSize = Microsoft.Office.Core.RibbonControlSize.RibbonControlSizeLarge;
-            this.btnDynamicStatusSheet.Label = "Create Dynamic Status Sheet 5.2";
+            this.btnDynamicStatusSheet.Label = "Create Dynamic Status Sheet 5.6";
             this.btnDynamicStatusSheet.Name = "btnDynamicStatusSheet";
             this.btnDynamicStatusSheet.ScreenTip = "Create a dynamic status sheet from an open Excel workbook";
             this.btnDynamicStatusSheet.ShowImage = true;

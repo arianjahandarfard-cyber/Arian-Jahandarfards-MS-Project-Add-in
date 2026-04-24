@@ -158,12 +158,21 @@
     <Compile Include="AJDynamicStatusMessageForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="AJDynamicStatusMessageForm.Designer.cs">
+      <DependentUpon>AJDynamicStatusMessageForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="AJDynamicStatusProgressForm.cs">
       <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AJDynamicStatusProgressForm.Designer.cs">
+      <DependentUpon>AJDynamicStatusProgressForm.cs</DependentUpon>
     </Compile>
     <Compile Include="AJDynamicStatusService.cs" />
     <Compile Include="AJDynamicStatusWorkbookPickerForm.cs">
       <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AJDynamicStatusWorkbookPickerForm.Designer.cs">
+      <DependentUpon>AJDynamicStatusWorkbookPickerForm.cs</DependentUpon>
     </Compile>
     <Compile Include="AJGoToUID.cs" />
     <Compile Include="AJMilestoneTracker.cs" />
@@ -177,8 +186,14 @@
     <Compile Include="AJProjectLinkerForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="AJProjectLinkerForm.Designer.cs">
+      <DependentUpon>AJProjectLinkerForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="AJProjectLinkerMatchConfigForm.cs">
       <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AJProjectLinkerMatchConfigForm.Designer.cs">
+      <DependentUpon>AJProjectLinkerMatchConfigForm.cs</DependentUpon>
     </Compile>
     <Compile Include="AJRibbon.cs">
       <SubType>Component</SubType>
@@ -194,6 +209,9 @@
     </Compile>
     <Compile Include="AJUpdatePrompt.cs">
       <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AJUpdatePrompt.Designer.cs">
+      <DependentUpon>AJUpdatePrompt.cs</DependentUpon>
     </Compile>
     <Compile Include="AJUpdater.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">

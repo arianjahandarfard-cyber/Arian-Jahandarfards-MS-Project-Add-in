@@ -1,5 +1,9 @@
 {
-  "version": "1.2.0",
-  "downloadUrl": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v1.2.0/AJAddIn-v1.2.0.zip",
-  "releaseNotes": "Fixed milestone delta bug, improved GoToUID performance."
+  "version": "3.2.0.0",
+  "buildDate": "2026-04-24",
+  "downloadZipFile": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v3.2.0.0/AJTools-3.2.0.0.zip",
+  "downloadUrl": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v3.2.0.0/AJTools-3.2.0.0.zip",
+  "releaseNotes": "Ribbon-driven update feed support and the user-scoped runtime update architecture.",
+  "releaseNotesUrl": "",
+  "sha256": ""
 }

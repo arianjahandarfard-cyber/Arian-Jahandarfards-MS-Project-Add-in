@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
+using AJTools.Infrastructure;
 
 namespace Arian_Jahandarfards_MS_Project_Add_in
 {
@@ -137,32 +138,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 
         private Image TryLoadLogo()
         {
-            string[] candidates =
-            {
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AJ Logo Final Files-02.png"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\AJSetup\AJ Logo Final Files-02.png"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\AJSetup\AJ Logo Final Files-02.png"),
-                @"C:\Program Files (x86)\AJTools\AJ Logo Final Files-02.png"
-            };
-
-            foreach (string candidate in candidates)
-            {
-                try
-                {
-                    string fullPath = Path.GetFullPath(candidate);
-                    if (!File.Exists(fullPath))
-                        continue;
-
-                    var image = new Bitmap(fullPath);
-                    image.MakeTransparent(Color.White);
-                    return image;
-                }
-                catch
-                {
-                }
-            }
-
-            return CreateFallbackLogo();
+            return AJBranding.TryLoadLogoImage() ?? CreateFallbackLogo();
         }
 
         private Image CreateFallbackLogo()

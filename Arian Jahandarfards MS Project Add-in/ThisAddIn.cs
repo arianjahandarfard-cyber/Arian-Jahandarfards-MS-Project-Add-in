@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Forms;
+using AJTools.Infrastructure;
 using ArianJahandarfardsAddIn;
 using MSProject = Microsoft.Office.Interop.MSProject;
 
@@ -15,6 +16,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         {
             _tracker = new AJMilestoneTracker(this.Application);
             _projectLinker = new AJProjectLinker(this.Application);
+            AJUpdateStateStore.MarkCurrentVersionHealthy(AJProjectAddInRegistration.GetCurrentUserManifestPath());
 
             _startupUpdateTimer = new Timer { Interval = 3000 };
             _startupUpdateTimer.Tick += async (s, args) =>

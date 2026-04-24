@@ -1,4 +1,4 @@
-name: Build, Zip, and Deploy to Azure
+name: Build Runtime Package and Deploy Update Feed
 
 on:
   push:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,127 +37,66 @@ jobs:
           [IO.File]::WriteAllBytes($certPath, $certBytes)
           Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String "${{ secrets.CERTIFICATE_PASSWORD }}" -AsPlainText -Force)
 
-      - name: Build Release
-        run: msbuild "Arian Jahandarfards MS Project Add-in.slnx" /p:Configuration=Release /p:Platform="Any CPU"
+      - name: Build runtime package
+        shell: pwsh
+        run: .\scripts\Build-RuntimePackage.ps1 -Configuration Release
 
-      - name: Get version from AssemblyInfo
-        id: get_version
+      - name: Read runtime manifest
+        id: runtime_manifest
         shell: pwsh
         run: |
-          $content = Get-Content "Arian Jahandarfards MS Project Add-in/Properties/AssemblyInfo.cs" -Raw
-          if ($content -match '\[assembly: AssemblyVersion\("(\d+\.\d+\.\d+\.\d+)"\)\]') {
-            $version = $Matches[1]
-          } else {
-            Write-Error "Could not find AssemblyVersion"
-            exit 1
-          }
-          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          $manifestPath = "artifacts\runtime-package\Release\version.json"
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          $version = $manifest.version
+          $zipName = Split-Path -Leaf $manifest.downloadZipFile
+          $sha256 = $manifest.sha256
+          "VERSION=$version" >> $env:GITHUB_OUTPUT
+          "ZIP_NAME=$zipName" >> $env:GITHUB_OUTPUT
+          "SHA256=$sha256" >> $env:GITHUB_OUTPUT
 
-      - name: Install WiX
-        shell: pwsh
-        run: dotnet tool install --global wix --version 4.0.5
-
-      - name: Copy AJSetup into Release folder for MSI packaging
+      - name: Upload runtime ZIP to Azure Blob
         shell: pwsh
         run: |
-          $releaseDir = "$env:GITHUB_WORKSPACE\Arian Jahandarfards MS Project Add-in\bin\Release"
-          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "$releaseDir\AJSetup.exe" -Force
-          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "$releaseDir\AJ Logo Final Files-02.png" -Force
-          Write-Host "Files in Release dir:"
-          Get-ChildItem $releaseDir | Select-Object Name
-
-      - name: Build MSI
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $src = "$env:GITHUB_WORKSPACE"
-          wix build AJToolsInstaller\Package.wxs -o AJAddIn.msi -d Version="$version" -d SourceDir="$src"
-          Copy-Item "AJAddIn.msi" "AJAddIn-v$version.msi" -Force
-          Write-Host "MSI size: $((Get-Item AJAddIn.msi).Length) bytes"
-          Write-Host "MSI files:"
-          $installer = New-Object -ComObject WindowsInstaller.Installer
-          $db = $installer.OpenDatabase("$pwd\AJAddIn.msi", 0)
-          $view = $db.OpenView("SELECT * FROM File")
-          $view.Execute()
-          $record = $view.Fetch()
-          while ($record -ne $null) {
-            Write-Host $record.StringData(1)
-            $record = $view.Fetch()
-          }
-
-      - name: Bundle installer package
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          New-Item -ItemType Directory -Force -Path "AJToolsInstaller-v$version"
-          Copy-Item "AJAddIn.msi" "AJToolsInstaller-v$version\"
-          Copy-Item "AJSetup\bin\Release\AJSetup.exe" "AJToolsInstaller-v$version\"
-          Copy-Item "AJSetup\bin\Release\AJ Logo Final Files-02.png" "AJToolsInstaller-v$version\"
-          Compress-Archive -Path "AJToolsInstaller-v$version\*" -DestinationPath "AJToolsInstaller-v$version.zip"
-
-      - name: Zip output
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          Compress-Archive -Path "Arian Jahandarfards MS Project Add-in/bin/Release/*" -DestinationPath "AJAddIn-v$version.zip"
-
-      - name: Upload zip to Azure Blob
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $zipName = "AJAddIn-v$version.zip"
+          $zipName = "${{ steps.runtime_manifest.outputs.ZIP_NAME }}"
           $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
           $ctx = New-AzStorageContext -ConnectionString $connStr
-          Set-AzStorageBlobContent -File $zipName -Container "releases" -Blob $zipName -Context $ctx -Force
+          Set-AzStorageBlobContent -File "artifacts\runtime-package\Release\$zipName" -Container "releases" -Blob $zipName -Context $ctx -Force
 
-      - name: Upload MSI to Azure Blob
+      - name: Update live version.json
         shell: pwsh
         run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $msiName = "AJAddIn-v$version.msi"
-          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
-          $ctx = New-AzStorageContext -ConnectionString $connStr
-          Set-AzStorageBlobContent -File $msiName -Container "releases" -Blob $msiName -Context $ctx -Force
-
-      - name: Upload installer bundle to Azure Blob
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $bundleName = "AJToolsInstaller-v$version.zip"
-          $connStr = "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
-          $ctx = New-AzStorageContext -ConnectionString $connStr
-          Set-AzStorageBlobContent -File $bundleName -Container "releases" -Blob $bundleName -Context $ctx -Force
-
-      - name: Update version.json on GitHub Pages
-        shell: pwsh
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $zipName = "AJAddIn-v$version.zip"
-          $msiName = "AJAddIn-v$version.msi"
-          $bundleName = "AJToolsInstaller-v$version.zip"
-          $json = @{
+          $version = "${{ steps.runtime_manifest.outputs.VERSION }}"
+          $zipName = "${{ steps.runtime_manifest.outputs.ZIP_NAME }}"
+          $sha256 = "${{ steps.runtime_manifest.outputs.SHA256 }}"
+          $zipUrl = "https://ajtools.blob.core.windows.net/releases/$zipName"
+          $json = [ordered]@{
             version = $version
-            downloadUrl = "https://ajtools.blob.core.windows.net/releases/$zipName"
-            msiUrl = "https://ajtools.blob.core.windows.net/releases/$msiName"
-            installerUrl = "https://ajtools.blob.core.windows.net/releases/$bundleName"
+            buildDate = (Get-Date).ToString("yyyy-MM-dd")
+            downloadZipFile = $zipUrl
+            downloadUrl = $zipUrl
             releaseNotes = "Version $version"
+            releaseNotesUrl = ""
+            sha256 = $sha256
           } | ConvertTo-Json
+
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/arianjahandarfard-cyber/version.json.git versionrepo
-          $json | Set-Content "versionrepo/version.json"
+          $json | Set-Content "versionrepo/version.json" -Encoding UTF8
           Set-Location versionrepo
           git add version.json
-          git commit -m "Auto-update to v$version"
-          git push
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Auto-update to v$version"
+            git push
+          }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.get_version.outputs.VERSION }}
-          name: v${{ steps.get_version.outputs.VERSION }}
-          body: Release v${{ steps.get_version.outputs.VERSION }}
+          tag_name: v${{ steps.runtime_manifest.outputs.VERSION }}
+          name: v${{ steps.runtime_manifest.outputs.VERSION }}
+          body: Runtime release v${{ steps.runtime_manifest.outputs.VERSION }}
           files: |
-            AJAddIn-v${{ steps.get_version.outputs.VERSION }}.zip
-            AJAddIn-v${{ steps.get_version.outputs.VERSION }}.msi
-            AJToolsInstaller-v${{ steps.get_version.outputs.VERSION }}.zip
+            artifacts/runtime-package/Release/${{ steps.runtime_manifest.outputs.ZIP_NAME }}
+            artifacts/runtime-package/Release/version.json

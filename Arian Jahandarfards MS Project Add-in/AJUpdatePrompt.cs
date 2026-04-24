@@ -1,17 +1,15 @@
-﻿using System;
-using System.Diagnostics;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using AJTools.Infrastructure;
 using Arian_Jahandarfards_MS_Project_Add_in;
 
 namespace ArianJahandarfardsAddIn
 {
     public class AJUpdatePrompt : Form
     {
-        // ── Colours ────────────────────────────────────────────────
         private readonly Color NavyDark = Color.FromArgb(0, 13, 31);
         private readonly Color NavyMid = Color.FromArgb(1, 44, 100);
         private readonly Color BlueAccent = Color.FromArgb(0, 146, 231);
@@ -19,17 +17,13 @@ namespace ArianJahandarfardsAddIn
         private readonly Color LightGray = Color.FromArgb(245, 245, 245);
         private readonly Color TextGray = Color.FromArgb(100, 100, 100);
 
-        // ── Public state ───────────────────────────────────────────
-        public bool LaunchConfirmed { get; private set; } = false;
+        public bool LaunchConfirmed { get; private set; }
 
-        // ── Private state ──────────────────────────────────────────
         private readonly bool _updateAvailable;
         private readonly string _currentVersion;
         private readonly string _newVersion;
-        private readonly string _msiUrl;
-        private readonly string _updateVersionStr;
+        private readonly string _releaseNotes;
 
-        // ── Controls ───────────────────────────────────────────────
         private Label lblTitle;
         private Label lblBody;
         private Label lblStatus;
@@ -40,26 +34,19 @@ namespace ArianJahandarfardsAddIn
         private Panel panelBody;
         private Panel panelBottom;
 
-        private static readonly string LogoPath =
-            @"C:\Program Files (x86)\AJTools\AJ Logo Final Files-02.png";
-
-        // ── Constructor ────────────────────────────────────────────
         public AJUpdatePrompt(
             bool updateAvailable,
             string currentVersion,
             string newVersion = null,
-            string msiUrl = null,
-            string updateVersionStr = null)
+            string releaseNotes = null)
         {
             _updateAvailable = updateAvailable;
             _currentVersion = currentVersion;
             _newVersion = newVersion;
-            _msiUrl = msiUrl;
-            _updateVersionStr = updateVersionStr;
+            _releaseNotes = releaseNotes;
             BuildUI();
         }
 
-        // ── UI ─────────────────────────────────────────────────────
         private void BuildUI()
         {
             Text = "AJ Tools";
@@ -70,32 +57,20 @@ namespace ArianJahandarfardsAddIn
             MinimizeBox = false;
             BackColor = White;
 
-            // Top dark panel
             panelTop = new Panel();
             panelTop.BackColor = NavyDark;
             panelTop.Size = new Size(520, 150);
             panelTop.Location = new Point(0, 0);
             Controls.Add(panelTop);
 
-            // Logo
             var pic = new PictureBox();
             pic.Size = new Size(230, 90);
             pic.Location = new Point(20, 25);
             pic.SizeMode = PictureBoxSizeMode.Zoom;
             pic.BackColor = Color.Transparent;
-            try
-            {
-                if (File.Exists(LogoPath))
-                {
-                    var bmp = new System.Drawing.Bitmap(LogoPath);
-                    bmp.MakeTransparent(Color.White);
-                    pic.Image = bmp;
-                }
-            }
-            catch { }
+            pic.Image = AJBranding.TryLoadLogoImage() ?? AJBranding.CreateFallbackLogo();
             panelTop.Controls.Add(pic);
 
-            // Subtitle in top panel
             var lblSub = new Label();
             lblSub.Text = "MS Project Add-in";
             lblSub.ForeColor = Color.FromArgb(160, 190, 220);
@@ -104,30 +79,26 @@ namespace ArianJahandarfardsAddIn
             lblSub.Location = new Point(265, 55);
             panelTop.Controls.Add(lblSub);
 
-            // Version in top panel
             var lblVer = new Label();
-            lblVer.Text = $"v{_currentVersion}";
+            lblVer.Text = "v" + _currentVersion;
             lblVer.ForeColor = BlueAccent;
             lblVer.Font = new Font("Segoe UI", 8.5f);
             lblVer.AutoSize = true;
             lblVer.Location = new Point(22, 122);
             panelTop.Controls.Add(lblVer);
 
-            // Blue accent line
             var line = new Panel();
             line.BackColor = BlueAccent;
             line.Size = new Size(520, 3);
             line.Location = new Point(0, 150);
             Controls.Add(line);
 
-            // Body panel
             panelBody = new Panel();
             panelBody.BackColor = White;
             panelBody.Size = new Size(520, 185);
             panelBody.Location = new Point(0, 153);
             Controls.Add(panelBody);
 
-            // Title
             lblTitle = new Label();
             lblTitle.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
             lblTitle.ForeColor = NavyDark;
@@ -135,22 +106,19 @@ namespace ArianJahandarfardsAddIn
             lblTitle.Location = new Point(20, 16);
             panelBody.Controls.Add(lblTitle);
 
-            // Body text
             lblBody = new Label();
             lblBody.Font = new Font("Segoe UI", 9f);
             lblBody.ForeColor = TextGray;
-            lblBody.Size = new Size(474, 60);
+            lblBody.Size = new Size(474, 80);
             lblBody.Location = new Point(20, 50);
             panelBody.Controls.Add(lblBody);
 
-            // Divider
             var div = new Panel();
             div.BackColor = Color.FromArgb(230, 230, 230);
             div.Size = new Size(474, 1);
             div.Location = new Point(20, 118);
             panelBody.Controls.Add(div);
 
-            // Shimmer bar
             shimmer = new AJShimmerBar();
             shimmer.Size = new Size(474, 12);
             shimmer.Location = new Point(20, 132);
@@ -159,16 +127,14 @@ namespace ArianJahandarfardsAddIn
             shimmer.AccentColor = BlueAccent;
             panelBody.Controls.Add(shimmer);
 
-            // Status label
             lblStatus = new Label();
-            lblStatus.Text = "";
+            lblStatus.Text = string.Empty;
             lblStatus.Font = new Font("Segoe UI", 8.5f);
             lblStatus.ForeColor = TextGray;
             lblStatus.AutoSize = true;
             lblStatus.Location = new Point(20, 152);
             panelBody.Controls.Add(lblStatus);
 
-            // Bottom panel
             panelBottom = new Panel();
             panelBottom.BackColor = LightGray;
             panelBottom.Size = new Size(520, 58);
@@ -181,7 +147,6 @@ namespace ArianJahandarfardsAddIn
             bottomBorder.Location = new Point(0, 0);
             panelBottom.Controls.Add(bottomBorder);
 
-            // Continue / Close button
             btnContinue = new Button();
             btnContinue.Size = new Size(110, 36);
             btnContinue.Location = new Point(388, 11);
@@ -194,7 +159,6 @@ namespace ArianJahandarfardsAddIn
             btnContinue.Click += BtnContinue_Click;
             panelBottom.Controls.Add(btnContinue);
 
-            // Cancel button
             btnCancel = new Button();
             btnCancel.Size = new Size(85, 36);
             btnCancel.Location = new Point(293, 11);
@@ -208,82 +172,62 @@ namespace ArianJahandarfardsAddIn
             btnCancel.Click += (s, e) => Close();
             panelBottom.Controls.Add(btnCancel);
 
-            // ── Populate based on state ──
             if (_updateAvailable)
             {
                 lblTitle.Text = "Update Available";
-                lblBody.Text = $"Current Version:  v{_currentVersion}\r\n" +
-                                    $"New Version:      v{_newVersion}\r\n\r\n" +
-                                    "Please close Microsoft Project to begin the update.";
-                btnContinue.Text = "Continue";
+                lblBody.Text = "Current Version:  v" + _currentVersion + "\r\n" +
+                               "New Version:      v" + _newVersion + "\r\n\r\n" +
+                               "Microsoft Project will close so the update can begin." +
+                               BuildReleaseNotesLine();
+                btnContinue.Text = "Update";
                 btnCancel.Text = "Cancel";
                 btnCancel.Visible = true;
             }
             else
             {
                 lblTitle.Text = "You're Up to Date";
-                lblBody.Text = $"You're on the latest version (v{_currentVersion}).";
+                lblBody.Text = "You're on the latest version (v" + _currentVersion + ").";
                 btnContinue.Text = "Close";
                 btnCancel.Visible = false;
             }
         }
 
-        // ── Continue clicked ───────────────────────────────────────
         private async void BtnContinue_Click(object sender, EventArgs e)
         {
-            if (!_updateAvailable) { Close(); return; }
+            if (!_updateAvailable)
+            {
+                Close();
+                return;
+            }
 
-            // Lock UI
             btnContinue.Enabled = false;
             btnCancel.Enabled = false;
 
-            // Show shimmer and progress state before handing off to the installer.
             shimmer.Visible = true;
             shimmer.StartAnimation();
-            lblStatus.Text = "Closing Microsoft Project and preparing the update...";
+            lblStatus.Text = "Preparing the AJ Tools runtime update...";
             await Task.Delay(200);
 
-            // Launch AJSetup
-            try
-            {
-                string setupExe = @"C:\Program Files (x86)\AJTools\AJSetup.exe";
-                if (!File.Exists(setupExe))
-                    throw new Exception($"AJSetup.exe not found at:\n{setupExe}");
-
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = setupExe,
-                    Arguments = $"/url \"{_msiUrl}\" /version \"{_updateVersionStr}\"",
-                    UseShellExecute = true,
-                    Verb = "runas"
-                });
-
-                // AJSetup already waits for WINPROJ to exit, so close the form
-                // immediately and let AJUpdater trigger Application.Quit().
-                LaunchConfirmed = true;
-                Close();
-            }
-            catch (Exception ex)
-            {
-                shimmer.StopAnimation();
-                shimmer.Visible = false;
-                lblStatus.Text = "";
-                lblTitle.Text = "Launch Failed";
-                lblTitle.ForeColor = Color.FromArgb(200, 30, 30);
-                lblBody.Text = ex.Message;
-                btnCancel.Text = "Close";
-                btnCancel.Enabled = true;
-            }
+            LaunchConfirmed = true;
+            DialogResult = DialogResult.OK;
+            Close();
         }
 
-        // ── Inner shimmer bar ──────────────────────────────────────
+        private string BuildReleaseNotesLine()
+        {
+            if (string.IsNullOrWhiteSpace(_releaseNotes))
+                return string.Empty;
+
+            return "\r\n\r\nRelease notes: " + _releaseNotes.Trim();
+        }
+
         public class AJShimmerBar : Control
         {
             public Color NavyColor { get; set; } = Color.FromArgb(1, 44, 100);
             public Color AccentColor { get; set; } = Color.FromArgb(0, 146, 231);
 
             private readonly System.Windows.Forms.Timer _timer;
-            private float _offset = 0f;
+            private float _offset;
             private const int SegmentWidth = 120;
 
             public AJShimmerBar()

@@ -3,8 +3,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using AJTools.Infrastructure;
 using Arian_Jahandarfards_MS_Project_Add_in;
 using Newtonsoft.Json;
 
@@ -12,7 +14,7 @@ namespace ArianJahandarfardsAddIn
 {
     public static class AJUpdater
     {
-        private const string VERSION_CHECK_URL =
+        private const string DefaultVersionCheckUrl =
             "https://arianjahandarfard-cyber.github.io/version.json/version.json";
         private static readonly HttpClient _http = new HttpClient();
         private static Timer _pendingQuitTimer;
@@ -24,50 +26,50 @@ namespace ArianJahandarfardsAddIn
                 System.Net.ServicePointManager.SecurityProtocol =
                     System.Net.SecurityProtocolType.Tls12;
 
-                string json = await _http.GetStringAsync(VERSION_CHECK_URL);
+                string versionCheckSource = GetVersionCheckUrl();
+                string json = await LoadManifestJsonAsync(versionCheckSource);
+                var remote = JsonConvert.DeserializeObject<AJUpdateManifest>(json);
+                if (remote == null)
+                    throw new InvalidOperationException("The AJ Tools update feed returned an empty manifest.");
 
-                var remote = JsonConvert.DeserializeObject<VersionManifest>(json);
                 Version current = Assembly.GetExecutingAssembly().GetName().Version;
-                Version remoteV = new Version(remote.Version);
-                bool updateAvailable = remoteV > current;
+                Version remoteVersion = remote.GetParsedVersion();
+                bool updateAvailable = remoteVersion > current;
 
-                // Silent checks should never show UI inside the Project process.
                 if (silent)
                     return;
 
                 if (!updateAvailable)
                 {
-                    MessageBox.Show(
-                        $"You're on the latest version (v{current}).",
-                        "AJ Tools",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    using (var prompt = new AJUpdatePrompt(false, current.ToString()))
+                        prompt.ShowDialog();
                     return;
                 }
 
-                var result = MessageBox.Show(
-                    "A new version of AJ Tools is available." + Environment.NewLine + Environment.NewLine +
-                    $"Current Version: v{current}" + Environment.NewLine +
-                    $"New Version: v{remote.Version}" + Environment.NewLine + Environment.NewLine +
-                    "Microsoft Project will close so the update can begin. Continue?",
-                    "AJ Tools Update Available",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Information);
+                using (var prompt = new AJUpdatePrompt(
+                    updateAvailable: true,
+                    currentVersion: current.ToString(),
+                    newVersion: remote.Version,
+                    releaseNotes: remote.ReleaseNotes))
+                {
+                    prompt.ShowDialog();
+                    if (!prompt.LaunchConfirmed)
+                        return;
+                }
 
-                if (result != DialogResult.Yes)
-                    return;
-
-                LaunchSetup(remote.MsiUrl, remote.Version);
+                LaunchRuntimeUpdater(remote, versionCheckSource);
                 ScheduleProjectQuit();
             }
             catch (Exception ex)
             {
                 if (!silent)
+                {
                     MessageBox.Show(
-                        $"Could not check for updates:\n{ex.Message}",
+                        "Could not check for updates:\n" + ex.Message,
                         "Update Check Failed",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
+                }
             }
         }
 
@@ -94,31 +96,79 @@ namespace ArianJahandarfardsAddIn
             _pendingQuitTimer.Start();
         }
 
-        private static void LaunchSetup(string msiUrl, string newVersion)
+        private static void LaunchRuntimeUpdater(AJUpdateManifest manifest, string manifestSource)
         {
-            string setupExe = @"C:\Program Files (x86)\AJTools\AJSetup.exe";
-            if (!File.Exists(setupExe))
-                throw new FileNotFoundException($"AJSetup.exe not found at: {setupExe}");
+            string packageSource = manifest.GetPackageSource(manifestSource);
+            if (string.IsNullOrWhiteSpace(packageSource))
+                throw new InvalidOperationException("The AJ Tools update feed did not provide a ZIP package source.");
+
+            string updaterExe = AJInstallLayout.GetRuntimeUpdaterPath(AppDomain.CurrentDomain.BaseDirectory);
+            if (!File.Exists(updaterExe))
+                throw new FileNotFoundException("AJRuntimeUpdater.exe not found at: " + updaterExe);
 
             using (var process = new Process())
             {
                 process.StartInfo = new ProcessStartInfo
                 {
-                    FileName = setupExe,
-                    Arguments = $"/url \"{msiUrl}\" /version \"{newVersion}\"",
-                    UseShellExecute = true,
-                    Verb = "runas"
+                    FileName = updaterExe,
+                    Arguments = BuildUpdaterArguments(manifest, manifestSource),
+                    UseShellExecute = true
                 };
                 process.Start();
             }
         }
 
-        private class VersionManifest
+        private static string GetVersionCheckUrl()
         {
-            [JsonProperty("version")] public string Version { get; set; }
-            [JsonProperty("downloadUrl")] public string DownloadUrl { get; set; }
-            [JsonProperty("msiUrl")] public string MsiUrl { get; set; }
-            [JsonProperty("releaseNotes")] public string ReleaseNotes { get; set; }
+            string overrideUrl = AJInstallLayout.TryGetUpdateFeedOverrideUrl();
+            return string.IsNullOrWhiteSpace(overrideUrl)
+                ? DefaultVersionCheckUrl
+                : overrideUrl;
+        }
+
+        private static async Task<string> LoadManifestJsonAsync(string source)
+        {
+            if (TryResolveLocalPath(source, out string localPath))
+                return File.ReadAllText(localPath);
+
+            return await _http.GetStringAsync(source);
+        }
+
+        private static bool TryResolveLocalPath(string source, out string localPath)
+        {
+            localPath = null;
+            if (string.IsNullOrWhiteSpace(source))
+                return false;
+
+            if (Uri.TryCreate(source, UriKind.Absolute, out Uri uri) && uri.IsFile)
+            {
+                localPath = uri.LocalPath;
+                return true;
+            }
+
+            if (source.StartsWith(@"\\", StringComparison.OrdinalIgnoreCase) ||
+                Path.IsPathRooted(source))
+            {
+                localPath = Path.GetFullPath(source);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildUpdaterArguments(AJUpdateManifest manifest, string manifestSource)
+        {
+            var builder = new StringBuilder();
+            builder.Append("/version ").Append('"').Append(manifest.Version).Append('"');
+            builder.Append(" /zip ").Append('"').Append(manifest.GetPackageSource(manifestSource)).Append('"');
+
+            if (!string.IsNullOrWhiteSpace(manifest.Sha256))
+                builder.Append(" /sha256 ").Append('"').Append(manifest.Sha256).Append('"');
+
+            if (!string.IsNullOrWhiteSpace(manifest.ReleaseNotesUrl))
+                builder.Append(" /releaseNotesUrl ").Append('"').Append(manifest.ReleaseNotesUrl).Append('"');
+
+            return builder.ToString();
         }
     }
 }

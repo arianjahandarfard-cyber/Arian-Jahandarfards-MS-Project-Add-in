@@ -1,9 +1,9 @@
 {
-  "version": "3.2.0.0",
+  "version": "3.2.0.1",
   "buildDate": "2026-04-24",
-  "downloadZipFile": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v3.2.0.0/AJTools-3.2.0.0.zip",
-  "downloadUrl": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v3.2.0.0/AJTools-3.2.0.0.zip",
-  "releaseNotes": "Ribbon-driven update feed support and the user-scoped runtime update architecture.",
+  "downloadZipFile": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v3.2.0.1/AJTools-3.2.0.1.zip",
+  "downloadUrl": "https://github.com/YourUsername/YourPrivateRepo/releases/download/v3.2.0.1/AJTools-3.2.0.1.zip",
+  "releaseNotes": "Checkpoint release before designer-backed form conversions.",
   "releaseNotesUrl": "",
   "sha256": ""
 }

@@ -54,7 +54,7 @@
             this.chkSearchAllOpenProjects.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(0)))), ((int)(((byte)(64)))));
             this.chkSearchAllOpenProjects.Font = new System.Drawing.Font("Segoe UI", 8.5F);
             this.chkSearchAllOpenProjects.ForeColor = System.Drawing.Color.White;
-            this.chkSearchAllOpenProjects.Location = new System.Drawing.Point(15, 63);
+            this.chkSearchAllOpenProjects.Location = new System.Drawing.Point(15, 66);
             this.chkSearchAllOpenProjects.Name = "chkSearchAllOpenProjects";
             this.chkSearchAllOpenProjects.Size = new System.Drawing.Size(164, 19);
             this.chkSearchAllOpenProjects.TabIndex = 3;
@@ -65,7 +65,7 @@
             // pnlSeparator
             // 
             this.pnlSeparator.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(146)))), ((int)(((byte)(231)))));
-            this.pnlSeparator.Location = new System.Drawing.Point(-7, 88);
+            this.pnlSeparator.Location = new System.Drawing.Point(-7, 92);
             this.pnlSeparator.Name = "pnlSeparator";
             this.pnlSeparator.Size = new System.Drawing.Size(320, 3);
             this.pnlSeparator.TabIndex = 4;
@@ -75,7 +75,7 @@
             this.btnOK.BackColor = System.Drawing.Color.White;
             this.btnOK.Font = new System.Drawing.Font("Segoe UI", 9.75F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnOK.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(0)))), ((int)(((byte)(64)))));
-            this.btnOK.Location = new System.Drawing.Point(123, 97);
+            this.btnOK.Location = new System.Drawing.Point(123, 106);
             this.btnOK.Name = "btnOK";
             this.btnOK.Size = new System.Drawing.Size(67, 24);
             this.btnOK.TabIndex = 5;
@@ -87,9 +87,9 @@
             // 
             this.lblError.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblError.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(200)))), ((int)(((byte)(0)))), ((int)(((byte)(0)))));
-            this.lblError.Location = new System.Drawing.Point(39, 14);
+            this.lblError.Location = new System.Drawing.Point(45, 14);
             this.lblError.Name = "lblError";
-            this.lblError.Size = new System.Drawing.Size(213, 23);
+            this.lblError.Size = new System.Drawing.Size(196, 23);
             this.lblError.TabIndex = 5;
             this.lblError.Visible = false;
             // 
@@ -98,9 +98,9 @@
             this.pictureBox1.BackColor = System.Drawing.Color.Transparent;
             this.pictureBox1.BackgroundImageLayout = System.Windows.Forms.ImageLayout.None;
             this.pictureBox1.Image = ((System.Drawing.Image)(resources.GetObject("pictureBox1.Image")));
-            this.pictureBox1.Location = new System.Drawing.Point(254, 4);
+            this.pictureBox1.Location = new System.Drawing.Point(258, 6);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(42, 31);
+            this.pictureBox1.Size = new System.Drawing.Size(38, 27);
             this.pictureBox1.SizeMode = System.Windows.Forms.PictureBoxSizeMode.StretchImage;
             this.pictureBox1.TabIndex = 6;
             this.pictureBox1.TabStop = false;
@@ -109,7 +109,7 @@
             // 
             this.AcceptButton = this.btnOK;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(0)))), ((int)(((byte)(64)))));
-            this.ClientSize = new System.Drawing.Size(305, 125);
+            this.ClientSize = new System.Drawing.Size(305, 138);
             this.Controls.Add(this.chkSearchAllOpenProjects);
             this.Controls.Add(this.pnlSeparator);
             this.Controls.Add(this.pictureBox1);

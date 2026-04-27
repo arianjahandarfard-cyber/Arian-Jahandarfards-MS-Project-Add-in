@@ -176,6 +176,7 @@
     </Compile>
     <Compile Include="AJGoToUID.cs" />
     <Compile Include="AJMilestoneTracker.cs" />
+    <Compile Include="AJOutlineTools.cs" />
     <Compile Include="AJProgress.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -235,6 +236,9 @@
     <EmbeddedResource Include="AJSettings.resx">
       <DependentUpon>AJSettings.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="AJUpdatePrompt.resx">
+      <DependentUpon>AJUpdatePrompt.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -292,6 +296,9 @@
     <Content Include="DynamicStatusVba\Module4.bas">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Icons\" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>

@@ -53,6 +53,12 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             frm.ShowDialog();
         }
 
+        private void btnLowerOutlineLevel_Click(object sender, RibbonControlEventArgs e) =>
+            AJOutlineTools.LowerOutlineLevel(Globals.ThisAddIn.Application);
+
+        private void btnIncreaseOutlineLevel_Click(object sender, RibbonControlEventArgs e) =>
+            AJOutlineTools.IncreaseOutlineLevel(Globals.ThisAddIn.Application);
+
         private void btnDynamicStatusSheet_Click(object sender, RibbonControlEventArgs e) =>
             AJDynamicStatusService.Launch();
 

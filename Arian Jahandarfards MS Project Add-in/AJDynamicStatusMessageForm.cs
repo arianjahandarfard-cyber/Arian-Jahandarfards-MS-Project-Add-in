@@ -21,6 +21,8 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         private readonly Color _dangerRed = Color.FromArgb(198, 52, 52);
         private readonly Color _successBlue = Color.FromArgb(0, 146, 231);
         private readonly Color _successGreen = Color.FromArgb(46, 125, 50);
+        private const int MinimumFormWidth = 360;
+        private const int MaximumBodyWidth = 336;
         private readonly string _title;
         private readonly string _body;
         private readonly AJDynamicStatusMessageType _messageType;
@@ -67,6 +69,20 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             buttonClose.BackColor = accent;
             buttonClose.ForeColor = _white;
             pictureBoxLogo.Image = AJBranding.TryLoadLogoImage() ?? CreateFallbackLogo();
+            ApplyCompactLayout();
+        }
+
+        private void ApplyCompactLayout()
+        {
+            labelBody.MaximumSize = new Size(MaximumBodyWidth, 0);
+            Size preferredBodySize = labelBody.GetPreferredSize(new Size(MaximumBodyWidth, 0));
+            labelBody.Size = new Size(MaximumBodyWidth, preferredBodySize.Height);
+
+            int bodyBottom = labelBody.Bottom;
+            panelFooter.Top = bodyBottom + 12;
+            ClientSize = new Size(
+                MinimumFormWidth,
+                panelFooter.Bottom);
         }
 
         private Image CreateFallbackLogo()

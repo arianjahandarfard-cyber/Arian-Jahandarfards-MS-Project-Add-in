@@ -36,6 +36,8 @@
             this.btnSettings = this.Factory.CreateRibbonButton();
             this.group2 = this.Factory.CreateRibbonGroup();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
+            this.btnLowerOutlineLevel = this.Factory.CreateRibbonButton();
+            this.btnIncreaseOutlineLevel = this.Factory.CreateRibbonButton();
             this.group3 = this.Factory.CreateRibbonGroup();
             this.btnDynamicStatusSheet = this.Factory.CreateRibbonButton();
             this.menuProjectLinker = this.Factory.CreateRibbonMenu();
@@ -146,7 +148,9 @@
             // group2
             // 
             this.group2.Items.Add(this.btnGoToUID);
-            this.group2.Label = "-----";
+            this.group2.Items.Add(this.btnLowerOutlineLevel);
+            this.group2.Items.Add(this.btnIncreaseOutlineLevel);
+            this.group2.Label = "Views";
             this.group2.Name = "group2";
             // 
             // btnGoToUID
@@ -158,6 +162,20 @@
             this.btnGoToUID.ScreenTip = "Navigate to task by UniqueID";
             this.btnGoToUID.ShowImage = true;
             this.btnGoToUID.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnGoToUID_Click);
+            // 
+            // btnLowerOutlineLevel
+            // 
+            this.btnLowerOutlineLevel.Label = "Lower Outline Level";
+            this.btnLowerOutlineLevel.Name = "btnLowerOutlineLevel";
+            this.btnLowerOutlineLevel.ScreenTip = "Collapse the current schedule down one WBS outline level";
+            this.btnLowerOutlineLevel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnLowerOutlineLevel_Click);
+            // 
+            // btnIncreaseOutlineLevel
+            // 
+            this.btnIncreaseOutlineLevel.Label = "Increase Outline Level";
+            this.btnIncreaseOutlineLevel.Name = "btnIncreaseOutlineLevel";
+            this.btnIncreaseOutlineLevel.ScreenTip = "Expand the current schedule up one WBS outline level";
+            this.btnIncreaseOutlineLevel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnIncreaseOutlineLevel_Click);
             // 
             // group3
             // 
@@ -313,6 +331,8 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnSettings;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group2;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnGoToUID;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnLowerOutlineLevel;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnIncreaseOutlineLevel;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup Update;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnCheckUpdates;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group3;

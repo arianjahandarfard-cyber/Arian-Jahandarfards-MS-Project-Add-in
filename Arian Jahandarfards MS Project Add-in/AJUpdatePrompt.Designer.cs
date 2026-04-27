@@ -66,7 +66,7 @@ namespace ArianJahandarfardsAddIn
             this.labelVersion.Font = new System.Drawing.Font("Segoe UI", 8.5F);
             this.labelVersion.Location = new System.Drawing.Point(22, 122);
             this.labelVersion.Name = "labelVersion";
-            this.labelVersion.Size = new System.Drawing.Size(39, 15);
+            this.labelVersion.Size = new System.Drawing.Size(37, 15);
             this.labelVersion.TabIndex = 2;
             this.labelVersion.Text = "v0.0.0";
             // 
@@ -74,9 +74,9 @@ namespace ArianJahandarfardsAddIn
             // 
             this.labelSubtitle.AutoSize = true;
             this.labelSubtitle.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.labelSubtitle.Location = new System.Drawing.Point(265, 55);
+            this.labelSubtitle.Location = new System.Drawing.Point(146, 122);
             this.labelSubtitle.Name = "labelSubtitle";
-            this.labelSubtitle.Size = new System.Drawing.Size(108, 15);
+            this.labelSubtitle.Size = new System.Drawing.Size(104, 15);
             this.labelSubtitle.TabIndex = 1;
             this.labelSubtitle.Text = "MS Project Add-in";
             // 
@@ -120,8 +120,10 @@ namespace ArianJahandarfardsAddIn
             // 
             // shimmerBar
             // 
+            this.shimmerBar.AccentColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(146)))), ((int)(((byte)(231)))));
             this.shimmerBar.Location = new System.Drawing.Point(20, 132);
             this.shimmerBar.Name = "shimmerBar";
+            this.shimmerBar.NavyColor = System.Drawing.Color.FromArgb(((int)(((byte)(1)))), ((int)(((byte)(44)))), ((int)(((byte)(100)))));
             this.shimmerBar.Size = new System.Drawing.Size(474, 12);
             this.shimmerBar.TabIndex = 3;
             this.shimmerBar.Visible = false;
@@ -149,7 +151,7 @@ namespace ArianJahandarfardsAddIn
             this.labelTitle.Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold);
             this.labelTitle.Location = new System.Drawing.Point(20, 16);
             this.labelTitle.Name = "labelTitle";
-            this.labelTitle.Size = new System.Drawing.Size(76, 25);
+            this.labelTitle.Size = new System.Drawing.Size(83, 25);
             this.labelTitle.TabIndex = 0;
             this.labelTitle.Text = "AJ Tools";
             // 

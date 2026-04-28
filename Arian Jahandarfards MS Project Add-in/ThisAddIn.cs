@@ -16,6 +16,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
         {
             _tracker = new AJMilestoneTracker(this.Application);
             _projectLinker = new AJProjectLinker(this.Application);
+            AJPreviousViewManager.StartTracking(this.Application);
             AJUpdateStateStore.MarkCurrentVersionHealthy(AJProjectAddInRegistration.GetCurrentUserManifestPath());
 
             _startupUpdateTimer = new Timer { Interval = 3000 };
@@ -46,6 +47,7 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _projectLinker?.Dispose();
             _projectLinker = null;
             _tracker?.Dispose();
+            AJPreviousViewManager.StopTracking();
         }
 
         #region VSTO generated code

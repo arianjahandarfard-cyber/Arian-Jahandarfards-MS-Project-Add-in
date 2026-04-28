@@ -5,6 +5,12 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
 {
     internal static class AJOutlineTools
     {
+        internal struct OutlineState
+        {
+            public bool ShowingAllLevels { get; set; }
+            public int VisibleLevel { get; set; }
+        }
+
         private sealed class OutlineAnchor
         {
             public MSProject.Task Task { get; set; }
@@ -88,6 +94,56 @@ namespace Arian_Jahandarfards_MS_Project_Add_in
             _currentVisibleLevel = nextLevel;
             _showingAllLevels = false;
             RestoreViewAnchor(app, project, anchor, nextLevel);
+        }
+
+        internal static OutlineState CaptureOutlineState(MSProject.Application app, MSProject.Project project)
+        {
+            if (project == null)
+            {
+                return new OutlineState
+                {
+                    ShowingAllLevels = true,
+                    VisibleLevel = 1
+                };
+            }
+
+            if (app != null)
+                TryPrepareProject(app, out _);
+
+            int maxDepth = GetMaxOutlineDepth(project);
+            return new OutlineState
+            {
+                ShowingAllLevels = _showingAllLevels,
+                VisibleLevel = GetCurrentLevel(maxDepth)
+            };
+        }
+
+        internal static void ApplyOutlineState(MSProject.Application app, MSProject.Project project, OutlineState state)
+        {
+            if (app == null || project == null)
+                return;
+
+            int maxDepth = GetMaxOutlineDepth(project);
+            int level = Math.Max(1, Math.Min(state.VisibleLevel <= 0 ? maxDepth : state.VisibleLevel, maxDepth));
+
+            try
+            {
+                if (state.ShowingAllLevels || level >= maxDepth)
+                {
+                    app.OutlineShowAllTasks();
+                    _currentVisibleLevel = maxDepth;
+                    _showingAllLevels = true;
+                }
+                else
+                {
+                    app.OutlineShowTasks(MapOutlineLevel(level), true);
+                    _currentVisibleLevel = level;
+                    _showingAllLevels = false;
+                }
+            }
+            catch
+            {
+            }
         }
 
         private static bool TryPrepareProject(MSProject.Application app, out MSProject.Project project)

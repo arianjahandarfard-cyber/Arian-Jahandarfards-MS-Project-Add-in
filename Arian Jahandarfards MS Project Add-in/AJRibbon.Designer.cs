@@ -35,6 +35,7 @@
             this.btnStopAuto = this.Factory.CreateRibbonButton();
             this.btnSettings = this.Factory.CreateRibbonButton();
             this.group2 = this.Factory.CreateRibbonGroup();
+            this.btnPreviousView = this.Factory.CreateRibbonButton();
             this.btnGoToUID = this.Factory.CreateRibbonButton();
             this.btnLowerOutlineLevel = this.Factory.CreateRibbonButton();
             this.btnIncreaseOutlineLevel = this.Factory.CreateRibbonButton();
@@ -52,6 +53,7 @@
             this.btnHighlightOrange = this.Factory.CreateRibbonButton();
             this.btnHighlightRed = this.Factory.CreateRibbonButton();
             this.btnHighlightPurple = this.Factory.CreateRibbonButton();
+            this.group4 = this.Factory.CreateRibbonGroup();
             this.tab1.SuspendLayout();
             this.Update.SuspendLayout();
             this.group1.SuspendLayout();
@@ -66,6 +68,7 @@
             this.tab1.Groups.Add(this.group1);
             this.tab1.Groups.Add(this.group2);
             this.tab1.Groups.Add(this.group3);
+            this.tab1.Groups.Add(this.group4);
             this.tab1.Label = "Arian Jahandarfard\'s Tools";
             this.tab1.Name = "tab1";
             // 
@@ -147,11 +150,19 @@
             // 
             // group2
             // 
+            this.group2.Items.Add(this.btnPreviousView);
             this.group2.Items.Add(this.btnGoToUID);
             this.group2.Items.Add(this.btnLowerOutlineLevel);
             this.group2.Items.Add(this.btnIncreaseOutlineLevel);
             this.group2.Label = "Views";
             this.group2.Name = "group2";
+            // 
+            // btnPreviousView
+            // 
+            this.btnPreviousView.Label = "Previous View";
+            this.btnPreviousView.Name = "btnPreviousView";
+            this.btnPreviousView.ScreenTip = "Return to the last view, table, filter, outline level, and selection saved by an AJ tool";
+            this.btnPreviousView.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnPreviousView_Click);
             // 
             // btnGoToUID
             // 
@@ -165,16 +176,20 @@
             // 
             // btnLowerOutlineLevel
             // 
-            this.btnLowerOutlineLevel.Label = "Lower Outline Level";
+            this.btnLowerOutlineLevel.Image = ((System.Drawing.Image)(resources.GetObject("btnLowerOutlineLevel.Image")));
+            this.btnLowerOutlineLevel.Label = "Lower Outline";
             this.btnLowerOutlineLevel.Name = "btnLowerOutlineLevel";
             this.btnLowerOutlineLevel.ScreenTip = "Collapse the current schedule down one WBS outline level";
+            this.btnLowerOutlineLevel.ShowImage = true;
             this.btnLowerOutlineLevel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnLowerOutlineLevel_Click);
             // 
             // btnIncreaseOutlineLevel
             // 
-            this.btnIncreaseOutlineLevel.Label = "Increase Outline Level";
+            this.btnIncreaseOutlineLevel.Image = ((System.Drawing.Image)(resources.GetObject("btnIncreaseOutlineLevel.Image")));
+            this.btnIncreaseOutlineLevel.Label = "Increase Outline";
             this.btnIncreaseOutlineLevel.Name = "btnIncreaseOutlineLevel";
             this.btnIncreaseOutlineLevel.ScreenTip = "Expand the current schedule up one WBS outline level";
+            this.btnIncreaseOutlineLevel.ShowImage = true;
             this.btnIncreaseOutlineLevel.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnIncreaseOutlineLevel_Click);
             // 
             // group3
@@ -299,6 +314,11 @@
             this.btnHighlightPurple.ShowImage = true;
             this.btnHighlightPurple.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.btnHighlightPurple_Click);
             // 
+            // group4
+            // 
+            this.group4.Label = "group4";
+            this.group4.Name = "group4";
+            // 
             // AJRibbon
             // 
             this.Name = "AJRibbon";
@@ -330,6 +350,7 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnStopAuto;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnSettings;
         internal Microsoft.Office.Tools.Ribbon.RibbonGroup group2;
+        internal Microsoft.Office.Tools.Ribbon.RibbonButton btnPreviousView;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnGoToUID;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnLowerOutlineLevel;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnIncreaseOutlineLevel;
@@ -349,6 +370,7 @@
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightOrange;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightRed;
         internal Microsoft.Office.Tools.Ribbon.RibbonButton btnHighlightPurple;
+        internal Microsoft.Office.Tools.Ribbon.RibbonGroup group4;
     }
 
     partial class ThisRibbonCollection

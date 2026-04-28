@@ -177,6 +177,7 @@
     <Compile Include="AJGoToUID.cs" />
     <Compile Include="AJMilestoneTracker.cs" />
     <Compile Include="AJOutlineTools.cs" />
+    <Compile Include="AJPreviousViewManager.cs" />
     <Compile Include="AJProgress.cs">
       <SubType>Form</SubType>
     </Compile>
